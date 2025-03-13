@@ -26,7 +26,7 @@ export default function DashboardPage() {
 
     return (
         <div className="p-6 bg-white shadow-md rounded-lg md:mt-0 mt-12">
-            <h1 className="text-3xl font-bold text-gray-900">Welcome to the Dashboard</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Marhabteen Dashboard</h1>
             <p className="text-gray-600 mt-2">Manage your properties, users, and more.</p>
 
             {/* Dashboard Stats */}

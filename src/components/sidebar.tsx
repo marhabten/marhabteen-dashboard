@@ -1,7 +1,7 @@
 "use client";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
-import { Home, LayoutDashboard, LogOut, Menu, Users, X } from "lucide-react";
+import { Home, LayoutDashboard, Lock, LogOut, Menu, MessageSquare, Users, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -68,12 +68,21 @@ const SideBar = () => {
                             </li>
                         ))}
                     </ul>
+
+                    {/* Locked Conversations Section */}
+                    <div className="flex items-center justify-between px-4 py-3 mt-4 text-gray-400 cursor-not-allowed pointer-events-none">
+                        <div className="flex items-center gap-3">
+                            <MessageSquare size={24} />
+                            <span>Conversations</span>
+                        </div>
+                        <Lock size={20} />
+                    </div>
                 </div>
 
                 {/* Logout Button */}
                 <button
                     onClick={handleLogout}
-                    className="flex items-center gap-3 px-4 py-3 rounded-lg bg-red-600 text-white hover:bg-red-700 transition"
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg bg-red-600 text-white hover:bg-red-700 transition mb-18 md:mb-0"
                 >
                     <LogOut size={24} />
                     <span>Logout</span>
