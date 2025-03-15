@@ -1,5 +1,5 @@
 "use client";
-import { deletePropertyImage, fetchPropertyById, updatePropertyDescription, updatePropertyTitle } from "@/app/service"; // Import the function
+import { deletePropertyById, deletePropertyImage, fetchPropertyById, updatePropertyDescription, updatePropertyTitle } from "@/app/service"; // Import the function
 import { Pencil, Trash2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -84,6 +84,18 @@ export default function PropertyDetailsPage() {
         }
     };
 
+    const handleDeleteProperty = async () => {
+        if (!property) return;
+        
+        const confirmed = confirm("Are you sure you want to delete this property?");
+        if (confirmed) {
+            const success = await deletePropertyById(property.id);
+            if (success) {
+                router.push("/dashboard/properties"); // Redirect after deletion
+            }
+        }
+    };
+
     return (
         <div className="mt-12 md:mt-0 p-0 md:p-6 md:max-w-4xl mx-auto">
             <button onClick={() => router.back()} className="text-blue-500 mb-4">← Back to Properties</button>
@@ -150,6 +162,12 @@ export default function PropertyDetailsPage() {
                         </div>
                     ))}
                 </div>
+                <button
+                    onClick={handleDeleteProperty}
+                    className="mt-6 w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 transition"
+                >
+                    Delete Property
+                </button>
             </div>
         </div>
     );
