@@ -1,5 +1,6 @@
 "use client";
 import { addVouchers, deleteVoucher, fetchVouchers } from "@/app/service";
+import { saveAs } from "file-saver";
 import { PlusCircle, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -57,16 +58,41 @@ export default function VouchersPage() {
         }
     };
 
+    const handleDownloadCSV = () => {
+        if (vouchers.length === 0) {
+            alert("No vouchers available to download.");
+            return;
+        }
+
+        // Prepare CSV content
+        let csvContent = "data:text/csv;charset=utf-8,Code,Value,Status\n";
+        vouchers.forEach(voucher => {
+            csvContent += `${voucher.code},${voucher.value} LYD,${voucher.isRedeemed ? "Redeemed" : "Active"}\n`;
+        });
+
+        // Create a Blob and trigger download
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        saveAs(blob, "vouchers.csv");
+    };
+
     return (
         <div className="p-0 md:p-6">
             <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
                 <h1 className="text-xl md:text-3xl font-bold mb-3 sm:mb-0">Vouchers</h1>
-                <button
-                    onClick={togglePopup}
-                    className="bg-blue-600 text-white flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-blue-700 text-sm md:text-base"
-                >
-                    <PlusCircle size={18} /> Create Voucher
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={togglePopup}
+                        className="bg-blue-600 text-white flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-blue-700 text-sm md:text-base"
+                    >
+                        <PlusCircle size={18} /> Create Voucher
+                    </button>
+                    <button
+                        onClick={handleDownloadCSV}
+                        className="bg-gray-600 text-white flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-700 text-sm md:text-base"
+                    >
+                        📤 Share CSV
+                    </button>
+                </div>
             </div>
 
             {loading ? (
@@ -140,15 +166,15 @@ export default function VouchersPage() {
                     <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-xs sm:max-w-sm">
                         <h2 className="text-lg md:text-xl font-semibold mb-4">Create Voucher</h2>
 
-                        <label className="block mb-2 text-sm md:text-base">Value:</label>
-                        <select
+                        <label className="block mb-2 text-sm md:text-base">Value (LYD):</label>
+                        <input
+                            type="number"
+                            min="1"
                             value={selectedValue}
                             onChange={(e) => setSelectedValue(Number(e.target.value))}
                             className="w-full border p-2 rounded mb-4 text-sm md:text-base"
-                        >
-                            <option value={50}>50 LYD</option>
-                            <option value={250}>250 LYD</option>
-                        </select>
+                            placeholder="Enter voucher value"
+                        />
 
                         <label className="block mb-2 text-sm md:text-base">Quantity:</label>
                         <input

@@ -10,7 +10,7 @@ export default function Home() {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
-                router.replace("/properties"); // Redirect to /properties if logged in
+                router.replace("/dashboard"); // Redirect to /properties if logged in
             } else {
                 router.replace("/login"); // Redirect to login if not logged in
             }
