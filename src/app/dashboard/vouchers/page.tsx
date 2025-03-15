@@ -65,7 +65,7 @@ export default function VouchersPage() {
         }
 
         // Prepare CSV content
-        let csvContent = "data:text/csv;charset=utf-8,Code,Value,Status\n";
+        let csvContent = "Code,Value,Status\n";
         vouchers.forEach(voucher => {
             csvContent += `${voucher.code},${voucher.value} LYD,${voucher.isRedeemed ? "Redeemed" : "Active"}\n`;
         });
