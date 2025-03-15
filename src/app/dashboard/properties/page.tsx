@@ -1,6 +1,7 @@
 "use client";
 import { deletePropertyById, fetchProperties } from "@/app/service";
-import { Search } from "lucide-react";
+import { Eye, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function PropertiesPage() {
@@ -8,18 +9,18 @@ export default function PropertiesPage() {
     const [filteredProperties, setFilteredProperties] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [loading, setLoading] = useState(true);
+    const router = useRouter();
 
     useEffect(() => {
         async function loadProperties() {
             const data = await fetchProperties();
             setProperties(data);
-            setFilteredProperties(data); // Initialize with all properties
+            setFilteredProperties(data);
             setLoading(false);
         }
         loadProperties();
     }, []);
 
-    // Handle search filtering
     const handleSearch = (query: string) => {
         setSearchQuery(query);
         if (!query.trim()) {
@@ -42,7 +43,7 @@ export default function PropertiesPage() {
             const success = await deletePropertyById(propertyId);
             if (success) {
                 setProperties((prev) => prev.filter((p) => p.id !== propertyId));
-                setFilteredProperties((prev) => prev.filter((p) => p.id !== propertyId)); // Update filtered list
+                setFilteredProperties((prev) => prev.filter((p) => p.id !== propertyId));
             }
         }
     };
@@ -67,75 +68,33 @@ export default function PropertiesPage() {
                 />
             </div>
 
-            {/* TABLE FOR LARGE SCREENS */}
-            <div className="hidden lg:block overflow-x-auto">
-                <table className="w-full border-collapse border border-gray-300">
-                    <thead>
-                        <tr className="bg-blue-100">
-                            <th className="border p-2">Image</th>
-                            <th className="border p-2">Title</th>
-                            <th className="border p-2">Location</th>
-                            <th className="border p-2">Owner</th>
-                            <th className="border p-2">Type</th>
-                            <th className="border p-2">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredProperties.length > 0 ? (
-                            filteredProperties.map((property) => (
-                                <tr key={property.id} className="text-center">
-                                    <td className="border p-2">
-                                        <img
-                                            src={property.imageUrl}
-                                            alt={property.locationTitle}
-                                            className="w-16 h-16 object-cover rounded"
-                                        />
-                                    </td>
-                                    <td className="border p-2">{property.locationTitle}</td>
-                                    <td className="border p-2">{property.locationDescription}</td>
-                                    <td className="border p-2">{property.ownerPropertyName}</td>
-                                    <td className="border p-2">{property.placeType}</td>
-                                    <td className="border p-2">
-                                        <button
-                                            onClick={() => handleDelete(property.id)}
-                                            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-700"
-                                        >
-                                            Delete
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr>
-                                <td colSpan={6} className="text-center text-gray-500 p-4">
-                                    No properties found.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* CARDS FOR MOBILE */}
-            <div className="lg:hidden space-y-4">
+            {/* PROPERTY GRID LIST */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredProperties.length > 0 ? (
                     filteredProperties.map((property) => (
-                        <div key={property.id} className="bg-white shadow-md rounded-lg p-4 flex flex-col">
+                        <div
+                            key={property.id}
+                            className="bg-white shadow-md rounded-lg p-4 cursor-pointer transition hover:shadow-lg"
+                            onClick={() => router.push(`/dashboard/properties/${property.id}`)}
+                        >
                             <img
                                 src={property.imageUrl}
                                 alt={property.locationTitle}
                                 className="w-full h-40 object-cover rounded-lg"
                             />
                             <h2 className="text-lg font-semibold mt-2">{property.locationTitle}</h2>
-                            <p className="text-gray-600 text-sm">{property.locationDescription}</p>
                             <p className="text-sm font-semibold mt-2">Owner: {property.ownerPropertyName}</p>
                             <p className="text-sm text-gray-700">Type: {property.placeType}</p>
 
                             <button
-                                onClick={() => handleDelete(property.id)}
-                                className="mt-4 w-full bg-red-500 text-white py-2 rounded-lg hover:bg-red-700 transition"
+                                onClick={(e) => {
+                                    e.stopPropagation(); // Prevent card click navigation
+                                    router.push(`/dashboard/properties/${property.id}`);
+                                }}
+                                className="mt-4 w-full bg-blue-500 text-white py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-blue-700 transition"
                             >
-                                Delete Property
+                                <Eye size={18} />
+                                View Property
                             </button>
                         </div>
                     ))

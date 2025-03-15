@@ -36,13 +36,13 @@ export default function DashboardPage() {
                     <p className="text-2xl font-bold">{totalProperties}</p>
                 </div>
 
-                <div className="p-4 bg-green-500 text-white rounded-lg shadow-md">
+                <div className="p-4 bg-blue-500 text-white rounded-lg shadow-md">
                     <h2 className="text-lg font-semibold">Total Users</h2>
                     <p className="text-2xl font-bold">{totalUsers}</p>
                 </div>
 
                 <div className="p-4 bg-purple-500 text-white rounded-lg shadow-md">
-                    <h2 className="text-lg font-semibold">Recent Properties</h2>
+                    <h2 className="text-lg font-semibold">Total Bookings</h2>
                     <ul className="text-sm">
                         {recentProperties.length > 0 ? (
                             recentProperties.map((property, index) => (
@@ -51,9 +51,14 @@ export default function DashboardPage() {
                                 </li>
                             ))
                         ) : (
-                            <li>No recent properties</li>
+                            <li>No bookings</li>
                         )}
                     </ul>
+                </div>
+
+                <div className="p-4 bg-green-500 text-white rounded-lg shadow-md">
+                    <h2 className="text-lg font-semibold">Total Revenue</h2>
+                    <p className="text-2xl font-bold">0 LYD</p>
                 </div>
             </div>
         </div>
