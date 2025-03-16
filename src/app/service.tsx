@@ -164,7 +164,7 @@ export async function fetchVouchers() {
 }
 
 // Add new vouchers
-export async function addVouchers(value: number, quantity: number) {
+export async function addVouchers(value: number, quantity: number, exported: boolean) {
     try {
         const vouchersRef = collection(db, "vouchers");
         const voucherPromises = [];
@@ -176,6 +176,7 @@ export async function addVouchers(value: number, quantity: number) {
                 createdAt: Timestamp.now(),
                 isRedeemed: false,
                 value,
+                exported, // Store exported status
             };
             voucherPromises.push(addDoc(vouchersRef, voucherData));
         }
@@ -201,6 +202,24 @@ export async function deleteVoucher(voucherId: string) {
         return false;
     }
 }
+
+// Update voucher export status in Firestore
+export async function updateVoucherExportStatus(voucherIds: string[]) {
+    try {
+        const batchPromises = voucherIds.map(async (id) => {
+            const voucherRef = doc(db, "vouchers", id);
+            await updateDoc(voucherRef, { exported: true });
+        });
+
+        await Promise.all(batchPromises);
+        console.log(`Export status updated for vouchers: ${voucherIds.join(", ")}`);
+        return true;
+    } catch (error) {
+        console.error("Error updating voucher export status:", error);
+        return false;
+    }
+}
+
 
 // Helper function to generate a random voucher code
 function generateVoucherCode() {
