@@ -15,6 +15,7 @@ export default function PropertiesPage() {
         async function loadProperties() {
             const data = await fetchProperties();
             setProperties(data);
+            console.log(data)
             setFilteredProperties(data);
             setLoading(false);
         }
@@ -78,7 +79,7 @@ export default function PropertiesPage() {
                             onClick={() => router.push(`/dashboard/properties/${property.id}`)}
                         >
                             <img
-                                src={property.imageUrl}
+                                src={property.images[0] || property.imageUrl}
                                 alt={property.locationTitle}
                                 className="w-full h-40 object-cover rounded-lg"
                             />

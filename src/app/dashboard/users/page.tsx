@@ -1,5 +1,5 @@
 "use client";
-import { PlusCircle, SearchIcon, Trash2 } from "lucide-react";
+import { Eye, EyeOff, PlusCircle, SearchIcon, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createAdminUser, deleteUserById, fetchUsers } from "../../service";
 
@@ -12,6 +12,8 @@ export default function UsersPage() {
   const [adminEmail, setAdminEmail] = useState("");
   const [password, setPassword] = useState("");
   const [retypePassword, setRetypePassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showRetypePassword, setShowRetypePassword] = useState(false);
 
   useEffect(() => {
     async function loadUsers() {
@@ -164,22 +166,32 @@ export default function UsersPage() {
             />
 
             <label className="block mb-2 text-sm">Password:</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border p-2 rounded mb-4 text-sm"
-              placeholder="Enter password"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border p-2 rounded mb-4 text-sm pr-10"
+                placeholder="Enter password"
+              />
+              <div className="absolute top-2.5 right-0 flex items-center pr-2 cursor-pointer" onClick={() => setShowPassword(!showPassword)}>
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </div>
+            </div>
 
             <label className="block mb-2 text-sm">Retype Password:</label>
-            <input
-              type="password"
-              value={retypePassword}
-              onChange={(e) => setRetypePassword(e.target.value)}
-              className="w-full border p-2 rounded mb-4 text-sm"
-              placeholder="Retype password"
-            />
+            <div className="relative">
+              <input
+                type={showRetypePassword ? "text" : "password"}
+                value={retypePassword}
+                onChange={(e) => setRetypePassword(e.target.value)}
+                className="w-full border p-2 rounded mb-4 text-sm pr-10"
+                placeholder="Retype password"
+              />
+              <div className="absolute top-2.5 right-0 flex align-middle justify-center self-center items-center pr-2 cursor-pointer" onClick={() => setShowRetypePassword(!showRetypePassword)}>
+                {showRetypePassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </div>
+            </div>
 
             <div className="flex justify-between">
               <button
