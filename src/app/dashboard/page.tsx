@@ -1,4 +1,5 @@
 "use client";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { fetchPropertyStats, fetchUserStats } from ".././service";
 
@@ -7,6 +8,7 @@ export default function DashboardPage() {
     const [recentProperties, setRecentProperties] = useState<any[]>([]);
     const [totalUsers, setTotalUsers] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [userEmail, setUserEmail] = useState("");
 
     useEffect(() => {
         async function loadStats() {
@@ -22,10 +24,26 @@ export default function DashboardPage() {
         loadStats();
     }, []);
 
+    useEffect(() => {
+        const auth = getAuth();
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                setUserEmail(user.email || "");
+            } else {
+                setUserEmail("");
+            }
+        });
+
+        return () => unsubscribe();
+    }, []);
+
     if (loading) return <p className="text-center mt-10">Loading dashboard data...</p>;
 
     return (
         <div className="p-6 bg-white shadow-md rounded-lg md:mt-0 mt-12">
+            {userEmail && (
+                <p className="text-sm text-gray-700 mb-2">Logged in as: {userEmail}</p>
+            )}
             <h1 className="text-3xl font-bold text-gray-900">Marhabteen Dashboard</h1>
             <p className="text-gray-600 mt-2">Manage your properties, users, and more.</p>
 
