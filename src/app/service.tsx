@@ -253,3 +253,18 @@ export async function createAdminUser(email: string, password: string) {
         return false;
     }
 }
+
+// Fetch all bookings
+export async function fetchBookings() {
+    try {
+        const bookingsRef = collection(db, "bookings");
+        const querySnapshot = await getDocs(bookingsRef);
+        return querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+    } catch (error) {
+        console.error("Error fetching bookings:", error);
+        return [];
+    }
+}

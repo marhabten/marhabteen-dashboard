@@ -1,7 +1,7 @@
 "use client";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
-import { Home, LayoutDashboard, Lock, LogOut, Menu, MessageSquare, Ticket, Users, X } from "lucide-react"; // Import Ticket icon
+import { CalendarDays, Home, LayoutDashboard, Lock, LogOut, Menu, MessageSquare, Ticket, Users, X } from "lucide-react"; // Import Ticket icon
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -23,6 +23,7 @@ const SideBar = () => {
         { name: "Dashboard", path: "/dashboard", icon: <LayoutDashboard size={24} /> },
         { name: "Properties", path: "/dashboard/properties", icon: <Home size={24} /> },
         { name: "Users", path: "/dashboard/users", icon: <Users size={24} /> },
+        { name: "Bookings", path: "/dashboard/bookings", icon: <CalendarDays size={24} /> },
         { name: "Vouchers", path: "/dashboard/vouchers", icon: <Ticket size={24} /> }, // New Vouchers Section
     ];
 
