@@ -1,7 +1,7 @@
 "use client";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
-import { fetchPropertyStats, fetchUserStats } from ".././service";
+import { fetchBookings, fetchPropertyStats, fetchUserStats } from ".././service";
 
 export default function DashboardPage() {
     const [totalProperties, setTotalProperties] = useState(0);
@@ -9,11 +9,18 @@ export default function DashboardPage() {
     const [totalUsers, setTotalUsers] = useState(0);
     const [loading, setLoading] = useState(true);
     const [userEmail, setUserEmail] = useState("");
+    const [totalBookings, setTotalBookings] = useState(0);
+    const [totalEarnings, setTotalEarnings] = useState(0);
 
     useEffect(() => {
         async function loadStats() {
             const { totalProperties, recentProperties } = await fetchPropertyStats();
             const { totalUsers } = await fetchUserStats();
+            const bookings = await fetchBookings();
+            const filtered = bookings.filter((b: any) => b.billingMethod !== "external");
+            setTotalBookings(filtered.length);
+            const earnings = filtered.reduce((sum: number, b: any) => sum + (b.paid || 0), 0);
+            setTotalEarnings(earnings);
 
             setTotalProperties(totalProperties);
             setRecentProperties(recentProperties);
@@ -61,22 +68,12 @@ export default function DashboardPage() {
 
                 <div className="p-4 bg-purple-500 text-white rounded-lg shadow-md">
                     <h2 className="text-lg font-semibold">Total Bookings</h2>
-                    <ul className="text-sm">
-                        {recentProperties.length > 0 ? (
-                            recentProperties.map((property, index) => (
-                                <li key={index} className="mt-1">
-                                    🏡 {property.locationTitle}
-                                </li>
-                            ))
-                        ) : (
-                            <li>No bookings</li>
-                        )}
-                    </ul>
+                    <p className="text-2xl font-bold">{totalBookings}</p>
                 </div>
 
                 <div className="p-4 bg-green-500 text-white rounded-lg shadow-md">
                     <h2 className="text-lg font-semibold">Total Revenue</h2>
-                    <p className="text-2xl font-bold">0 LYD</p>
+                    <p className="text-2xl font-bold">{totalEarnings} LYD</p>
                 </div>
             </div>
         </div>
