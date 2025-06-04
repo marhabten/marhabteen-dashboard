@@ -33,7 +33,7 @@ const BookingsPage = () => {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 pt-12">
       <h1 className="text-2xl font-semibold mb-4">Bookings</h1>
 
       {/* Table for desktop */}
