@@ -17,10 +17,14 @@ export default function DashboardPage() {
             const { totalProperties, recentProperties } = await fetchPropertyStats();
             const { totalUsers } = await fetchUserStats();
             const bookings = await fetchBookings();
-            const filtered = bookings.filter((b: any) => b.billingMethod !== "external");
+            const filtered = bookings.filter((b: any) =>
+                b.billingMethod !== "external" && b.paymentStatus !== "Refunded"
+            );
             setTotalBookings(filtered.length);
             const earnings = filtered.reduce((sum: number, b: any) => sum + (b.paid || 0), 0);
-            setTotalEarnings(earnings);
+            // Round to two decimal places
+            const roundedEarnings = Math.round(earnings * 100) / 100;
+            setTotalEarnings(roundedEarnings);
 
             setTotalProperties(totalProperties);
             setRecentProperties(recentProperties);

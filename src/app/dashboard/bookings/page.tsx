@@ -7,6 +7,7 @@ type Booking = {
   hostStatus?: string;
   guestStatus?: string;
   paymentStatus?: string;
+  paid?: string;
 };
 
 import { useEffect, useState } from "react";
@@ -52,6 +53,7 @@ const BookingsPage = () => {
               <th className="text-left px-4 py-2 border-b">Booking ID</th>
               <th className="text-left px-4 py-2 border-b">Check-in Date</th>
               <th className="text-left px-4 py-2 border-b">Status</th>
+              <th className="text-left px-4 py-2 border-b">Amount</th>
               <th className="text-left px-4 py-2 border-b">Host Confirmation</th>
               <th className="text-left px-4 py-2 border-b">Guest Confirmation</th>
             </tr>
@@ -68,6 +70,7 @@ const BookingsPage = () => {
                   <td className="px-4 py-2 border-b">{booking.id}</td>
                   <td className="px-4 py-2 border-b">{booking.checkIn}</td>
                   <td className="px-4 py-2 border-b">{booking.paymentStatus}</td>
+                  <td className="px-4 py-2 border-b">{booking.paid}</td>
                   <td className={`px-4 py-2 border-b ${hostStatusColor}`}>{hostStatusText}</td>
                   <td className={`px-4 py-2 border-b ${guestStatusColor}`}>{guestStatusText}</td>
                 </tr>
@@ -90,6 +93,7 @@ const BookingsPage = () => {
               <p className="font-semibold">Booking ID: <span className="font-normal">{booking.id}</span></p>
               <p>Check-in Date: {booking.checkIn}</p>
               <p>Payment Method: {booking.billingMethod}</p>
+              <p>Amount: {booking.paid}</p>
               <p className={hostStatusColor}>
                 Host: {hostStatusText}
               </p>
