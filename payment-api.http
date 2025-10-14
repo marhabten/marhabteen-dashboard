@@ -1,0 +1,94 @@
+###
+# Payment API Tests
+# Use with VS Code REST Client extension or copy/paste to curl
+###
+
+@baseUrl = http://localhost:3000
+@contentType = application/json
+
+### Test 1: Payment Initiate - Valid Request
+POST {{baseUrl}}/api/payment/initiate
+Content-Type: {{contentType}}
+
+{
+  "bookingId": "test-booking-123",
+  "amount": 100.50,
+  "email": "customer@gmail.com",
+  "phone": "0923345678"
+}
+
+### Test 2: Payment Initiate - Missing Required Fields
+POST {{baseUrl}}/api/payment/initiate
+Content-Type: {{contentType}}
+
+{
+  "bookingId": "test-booking-123"
+}
+
+### Test 3: Payment Initiate - Invalid Amount (negative)
+POST {{baseUrl}}/api/payment/initiate
+Content-Type: {{contentType}}
+
+{
+  "bookingId": "test-booking-123",
+  "amount": -50,
+  "email": "customer@example.com"
+}
+
+### Test 4: Payment Initiate - Invalid Amount (zero)
+POST {{baseUrl}}/api/payment/initiate
+Content-Type: {{contentType}}
+
+{
+  "bookingId": "test-booking-123",
+  "amount": 0,
+  "email": "customer@example.com"
+}
+
+### Test 5: Payment Initiate - Invalid Amount (string)
+POST {{baseUrl}}/api/payment/initiate
+Content-Type: {{contentType}}
+
+{
+  "bookingId": "test-booking-123",
+  "amount": "100",
+  "email": "customer@example.com"
+}
+
+### Test 6: Payment Verify - Valid Request
+POST {{baseUrl}}/api/payment/verify
+Content-Type: {{contentType}}
+
+{
+  "customRef": "test-booking-123"
+}
+
+### Test 7: Payment Verify - Missing customRef
+POST {{baseUrl}}/api/payment/verify
+Content-Type: {{contentType}}
+
+{
+}
+
+### Test 8: Payment Verify - Check Non-existent Booking
+POST {{baseUrl}}/api/payment/verify
+Content-Type: {{contentType}}
+
+{
+  "customRef": "non-existent-booking-999"
+}
+
+
+###
+# CURL COMMANDS (Copy these to run in terminal)
+###
+
+# Test Payment Initiate (Valid)
+# curl -X POST http://localhost:3000/api/payment/initiate \
+#   -H "Content-Type: application/json" \
+#   -d '{"bookingId":"test-123","amount":100,"email":"test@example.com","phone":"+1234567890"}'
+
+# Test Payment Verify
+# curl -X POST http://localhost:3000/api/payment/verify \
+#   -H "Content-Type: application/json" \
+#   -d '{"customRef":"test-123"}'
