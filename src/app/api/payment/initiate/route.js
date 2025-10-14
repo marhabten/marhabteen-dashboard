@@ -52,7 +52,7 @@ export async function POST(req) {
 
     const initiateUrl = `${PAYMENT_GATEWAY_URL}/payment/initiate?${paymentParams}`;
 
-    console.log('Initiating payment for booking:', bookingId, 'Amount:', amount);
+    console.log('Initiating payment for booking:', bookingId, 'Amount:', amount, 'phone:', phone, 'email:', email);
 
     // Call payment gateway
     const response = await fetch(initiateUrl, {

@@ -3,7 +3,7 @@
 # Use with VS Code REST Client extension or copy/paste to curl
 ###
 
-@baseUrl = http://localhost:3000
+@baseUrl = https://admin.marhabten.net
 @contentType = application/json
 
 ### Test 1: Payment Initiate - Valid Request
@@ -11,7 +11,7 @@ POST {{baseUrl}}/api/payment/initiate
 Content-Type: {{contentType}}
 
 {
-  "bookingId": "test-booking-123",
+  "bookingId": "test-booking-125",
   "amount": 100.50,
   "email": "customer@gmail.com",
   "phone": "0923345678"
