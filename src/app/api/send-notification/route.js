@@ -15,7 +15,7 @@ export async function POST(req) {
     }
 
     // Fetch recipient user data
-    const userDoc = await admin.firestore().collection('users').doc(recipientId).get();
+    const userDoc = await admin.firestore.collection('users').doc(recipientId).get();
 
     if (!userDoc.exists) {
       return NextResponse.json(
@@ -94,7 +94,7 @@ export async function POST(req) {
     });
 
     // Send notification
-    const response = await admin.messaging().send({
+    const response = await admin.messaging.send({
       token: fcmToken,
       ...payload,
     });
