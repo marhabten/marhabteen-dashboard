@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 // IMPORTANT: Store these in environment variables, NOT in code
 const PAYMENT_GATEWAY_ID = process.env.PAYMENT_GATEWAY_ID;
 const PAYMENT_GATEWAY_TOKEN = process.env.PAYMENT_GATEWAY_TOKEN;
-const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://c7drkx2ege.execute-api.eu-west-2.amazonaws.com';
+const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://uat-api.tlync.ly/api/v3';
 
 export async function POST(req) {
   try {
@@ -20,7 +20,7 @@ export async function POST(req) {
 
     // Validate environment variables
     if (!PAYMENT_GATEWAY_ID || !PAYMENT_GATEWAY_TOKEN) {
-      console.error('Payment gateway credentials not configured');
+      console.error('[Payment] Missing env vars — PAYMENT_GATEWAY_ID:', !!PAYMENT_GATEWAY_ID, 'PAYMENT_GATEWAY_TOKEN:', !!PAYMENT_GATEWAY_TOKEN);
       return NextResponse.json(
         { error: 'Payment gateway not configured' },
         { status: 500 }
@@ -39,7 +39,7 @@ export async function POST(req) {
     const backendCallbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://your-domain.com'}/api/payment/callback`;
     const frontendReturnUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://your-domain.com'}/payment/success`;
 
-    // Prepare payment request
+    // Prepare payment request as form-encoded body (required by TLYNC)
     const paymentParams = new URLSearchParams({
       id: PAYMENT_GATEWAY_ID,
       amount: amount.toString(),
@@ -50,30 +50,48 @@ export async function POST(req) {
       custom_ref: bookingId,
     });
 
-    const initiateUrl = `${PAYMENT_GATEWAY_URL}/payment/initiate?${paymentParams}`;
+    const initiateUrl = `${PAYMENT_GATEWAY_URL}/payment/initiate`;
 
-    console.log('Initiating payment for booking:', bookingId, 'Amount:', amount, 'phone:', phone, 'email:', email);
+    const requestHeaders = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Bearer ${PAYMENT_GATEWAY_TOKEN}`,
+    };
 
-    // Call payment gateway
+    console.log('[Payment] ── Outgoing Request ──────────────────────');
+    console.log('[Payment] Method : POST');
+    console.log('[Payment] URL    :', initiateUrl);
+    console.log('[Payment] Headers:', {
+      ...requestHeaders,
+      Authorization: `Bearer ${PAYMENT_GATEWAY_TOKEN?.slice(0, 6)}...`,
+    });
+    console.log('[Payment] Body   :', paymentParams.toString());
+    console.log('[Payment] Params :', { bookingId, amount, phone, email, backendCallbackUrl, frontendReturnUrl });
+    console.log('[Payment] ────────────────────────────────────────────');
+
     const response = await fetch(initiateUrl, {
       method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${PAYMENT_GATEWAY_TOKEN}`,
-      },
+      headers: requestHeaders,
+      body: paymentParams,
     });
 
+    const rawText = await response.text();
+
+    console.log('[Payment] ── Gateway Response ───────────────────────');
+    console.log('[Payment] Status :', response.status, response.statusText);
+    console.log('[Payment] Headers:', Object.fromEntries(response.headers.entries()));
+    console.log('[Payment] Body   :', rawText);
+    console.log('[Payment] ────────────────────────────────────────────');
+
     if (!response.ok) {
-      console.error('Payment gateway error:', response.status, await response.text());
       return NextResponse.json(
-        { error: 'Payment gateway request failed' },
+        { error: 'Payment gateway request failed', gatewayStatus: response.status, gatewayMessage: rawText },
         { status: response.status }
       );
     }
 
-    const data = await response.json();
-    console.log('Payment initiated successfully:', data);
+    const data = JSON.parse(rawText);
+    console.log('[Payment] Initiated successfully:', data);
 
     return NextResponse.json({
       success: true,
@@ -82,7 +100,7 @@ export async function POST(req) {
     });
 
   } catch (error) {
-    console.error('Payment initiation error:', error);
+    console.error('[Payment] Initiation error:', error);
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

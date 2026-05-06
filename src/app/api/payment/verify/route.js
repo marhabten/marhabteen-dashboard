@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 const PAYMENT_GATEWAY_ID = process.env.PAYMENT_GATEWAY_ID;
 const PAYMENT_GATEWAY_TOKEN = process.env.PAYMENT_GATEWAY_TOKEN;
-const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://c7drkx2ege.execute-api.eu-west-2.amazonaws.com';
+const PAYMENT_GATEWAY_URL = process.env.PAYMENT_GATEWAY_URL || 'https://uat-api.tlync.ly/api/v3';
 
 export async function POST(req) {
   try {
@@ -17,38 +17,54 @@ export async function POST(req) {
     }
 
     if (!PAYMENT_GATEWAY_ID || !PAYMENT_GATEWAY_TOKEN) {
-      console.error('Payment gateway credentials not configured');
+      console.error('[Payment] Missing env vars — PAYMENT_GATEWAY_ID:', !!PAYMENT_GATEWAY_ID, 'PAYMENT_GATEWAY_TOKEN:', !!PAYMENT_GATEWAY_TOKEN);
       return NextResponse.json(
         { error: 'Payment gateway not configured' },
         { status: 500 }
       );
     }
 
-    const verifyUrl = `${PAYMENT_GATEWAY_URL}/receipt/transaction?store_id=${PAYMENT_GATEWAY_ID}&custom_ref=${customRef}`;
+    // Params must be in body as x-www-form-urlencoded (not query string)
+    const verifyParams = new URLSearchParams({
+      store_id: PAYMENT_GATEWAY_ID,
+      custom_ref: customRef,
+    });
 
-    console.log('Verifying payment for booking:', customRef);
+    const verifyUrl = `${PAYMENT_GATEWAY_URL}/receipt/transaction`;
+
+    console.log('[Payment] Verifying payment:', {
+      customRef,
+      url: verifyUrl,
+      tokenPresent: !!PAYMENT_GATEWAY_TOKEN,
+      tokenPrefix: PAYMENT_GATEWAY_TOKEN?.slice(0, 6) + '...',
+      body: verifyParams.toString(),
+    });
 
     const response = await fetch(verifyUrl, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Bearer ${PAYMENT_GATEWAY_TOKEN}`,
       },
+      body: verifyParams,
     });
 
+    const rawText = await response.text();
+    console.log('[Payment] Verify gateway response:', response.status, rawText);
+
     if (!response.ok) {
-      console.error('Payment verification failed:', response.status);
+      console.error('[Payment] Verification failed:', response.status, rawText);
       return NextResponse.json(
         { success: false, verified: false },
         { status: 200 }
       );
     }
 
-    const data = await response.json();
+    const data = JSON.parse(rawText);
     const isSuccess = data.result === 'success';
 
-    console.log('Payment verification result:', isSuccess ? 'SUCCESS' : 'FAILED');
+    console.log('[Payment] Verification result:', isSuccess ? 'SUCCESS' : 'NOT COMPLETE', data);
 
     return NextResponse.json({
       success: true,
@@ -58,7 +74,7 @@ export async function POST(req) {
     });
 
   } catch (error) {
-    console.error('Payment verification error:', error);
+    console.error('[Payment] Verification error:', error);
     return NextResponse.json(
       { error: error.message, success: false, verified: false },
       { status: 500 }
