@@ -257,7 +257,7 @@ export async function createAdminUser(email: string, password: string) {
 // Update multiple property fields at once
 export async function updatePropertyDetails(
   propertyId: string,
-  fields: Record<string, unknown>
+  fields: Record<string, any>
 ) {
   try {
     const propertyRef = doc(db, "properties", propertyId);
@@ -289,7 +289,7 @@ export async function fetchBookings() {
         return querySnapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
-        }));
+        })) as any[];
     } catch (error) {
         console.error("Error fetching bookings:", error);
         return [];

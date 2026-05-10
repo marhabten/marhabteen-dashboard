@@ -1,6 +1,6 @@
 'use client';
 
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 import {
   addDoc,
   collection,
@@ -13,7 +13,8 @@ import {
   Timestamp,
   where,
 } from 'firebase/firestore';
-import { MessageSquare, Plus, Search, Send, X } from 'lucide-react';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { Image as ImageIcon, MessageSquare, Paperclip, Plus, Search, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 const SUPPORT_UID = 'support';
@@ -40,8 +41,23 @@ function initials(name: string) {
 
 function formatTime(ts: Timestamp | null) {
   if (!ts) return '';
+  return ts.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDate(ts: Timestamp | null) {
+  if (!ts) return '';
   const d = ts.toDate();
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function sameDay(a: Timestamp | null, b: Timestamp | null) {
+  if (!a || !b) return false;
+  return a.toDate().toDateString() === b.toDate().toDateString();
 }
 
 async function sendPushNotification(recipientId: string, message: string, chatId: string) {
@@ -57,9 +73,7 @@ async function sendPushNotification(recipientId: string, message: string, chatId
         data: { chatId, senderId: SUPPORT_UID, senderName: 'Marhabten Support' },
       }),
     });
-  } catch {
-    // silently ignore notification failures
-  }
+  } catch { /* silently ignore */ }
 }
 
 export default function ConversationsPage() {
@@ -68,34 +82,31 @@ export default function ConversationsPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [loadingChats, setLoadingChats] = useState(true);
-
   const [showNewChat, setShowNewChat] = useState(false);
   const [allUsers, setAllUsers] = useState<FirestoreUser[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Real-time support chats list
+  // Real-time chat list
   useEffect(() => {
-    const q = query(
-      collection(db, 'Chats'),
-      where('users', 'array-contains', SUPPORT_UID)
-    );
+    const q = query(collection(db, 'Chats'), where('users', 'array-contains', SUPPORT_UID));
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Chat));
-      list.sort(
-        (a, b) =>
-          (b.DateTime?.toMillis() ?? 0) - (a.DateTime?.toMillis() ?? 0)
-      );
+      list.sort((a, b) => (b.DateTime?.toMillis() ?? 0) - (a.DateTime?.toMillis() ?? 0));
       setChats(list);
       setLoadingChats(false);
     });
     return () => unsub();
   }, []);
 
-  // Real-time messages for selected chat
+  // Real-time messages
   useEffect(() => {
     if (!selectedChat) return;
     const q = query(
@@ -108,6 +119,7 @@ export default function ConversationsPage() {
     return () => unsub();
   }, [selectedChat?.id]);
 
+  // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -123,17 +135,37 @@ export default function ConversationsPage() {
         sendby: SUPPORT_UID,
         time: Timestamp.now(),
         type: 'text',
+        'arabic word': '',
       });
-      await setDoc(
-        doc(db, 'Chats', selectedChat.id),
-        { lastMessage: text, DateTime: Timestamp.now() },
-        { merge: true }
-      );
-      // Send push notification to the user
+      await setDoc(doc(db, 'Chats', selectedChat.id), { lastMessage: text, DateTime: Timestamp.now() }, { merge: true });
       const partner = getPartner(selectedChat);
       await sendPushNotification(partner.uid, text, selectedChat.id);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedChat) return;
+    setUploadingImage(true);
+    try {
+      const storageRef = ref(storage, `chat_images/${selectedChat.id}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      await addDoc(collection(db, 'Chats', selectedChat.id, 'messages'), {
+        message: url,
+        sendby: SUPPORT_UID,
+        time: Timestamp.now(),
+        type: 'image',
+        'arabic word': '',
+      });
+      await setDoc(doc(db, 'Chats', selectedChat.id), { lastMessage: '📷 Photo', DateTime: Timestamp.now() }, { merge: true });
+      const partner = getPartner(selectedChat);
+      await sendPushNotification(partner.uid, '📷 Photo', selectedChat.id);
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -148,25 +180,17 @@ export default function ConversationsPage() {
   const startConversation = async (user: FirestoreUser) => {
     const chatId = `${user.id}_support`;
     const userName = (user['1_name'] as string) || (user['name'] as string) || 'User';
-    await setDoc(
-      doc(db, 'Chats', chatId),
-      {
-        user1: { uid: user.id, name: userName, image: '', badges: 0 },
-        user2: { uid: SUPPORT_UID, name: 'Marhabten Support', image: '', badges: 0 },
-        lastMessage: '',
-        DateTime: Timestamp.now(),
-        users: [user.id, SUPPORT_UID],
-        messages: [],
-      },
-      { merge: true }
-    );
+    await setDoc(doc(db, 'Chats', chatId), {
+      user1: { uid: user.id, name: userName, image: '', badges: 0 },
+      user2: { uid: SUPPORT_UID, name: 'Marhabten Support', image: '', badges: 0 },
+      lastMessage: '', DateTime: Timestamp.now(),
+      users: [user.id, SUPPORT_UID], messages: [],
+    }, { merge: true });
     setSelectedChat({
       id: chatId,
       user1: { uid: user.id as string, name: userName, image: '', badges: 0 },
       user2: { uid: SUPPORT_UID, name: 'Marhabten Support', image: '', badges: 0 },
-      lastMessage: '',
-      DateTime: null,
-      users: [user.id as string, SUPPORT_UID],
+      lastMessage: '', DateTime: null, users: [user.id as string, SUPPORT_UID],
     });
     setShowNewChat(false);
     setUserSearch('');
@@ -175,23 +199,29 @@ export default function ConversationsPage() {
   const filteredUsers = allUsers
     .filter((u) => {
       const name = ((u['1_name'] as string) || (u['name'] as string) || '').toLowerCase();
-      const phone = ((u['3_phoneNumber'] as string) || (u['phoneNumber'] as string) || '').toLowerCase();
+      const phone = ((u['3_phoneNumber'] as string) || '').toLowerCase();
       const email = ((u['2_email'] as string) || (u['email'] as string) || '').toLowerCase();
       const q = userSearch.toLowerCase();
       return name.includes(q) || phone.includes(q) || email.includes(q);
     })
     .filter((u) => u.id !== SUPPORT_UID);
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      {/* ── Left panel ── */}
+      {/* ── Left: chat list ── */}
       <div className="w-72 flex-shrink-0 flex flex-col bg-white border-r border-gray-100">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-800">Support Chats</h2>
           <button
             onClick={openNewChatModal}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition"
-            title="Start new conversation"
           >
             <Plus size={16} />
           </button>
@@ -215,20 +245,18 @@ export default function ConversationsPage() {
                 <li key={chat.id}>
                   <button
                     onClick={() => setSelectedChat(chat)}
-                    className={`w-full text-left px-4 py-3 flex items-center gap-3 transition rounded-xl mx-1 ${
-                      active
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'hover:bg-gray-50 text-gray-700'
-                    }`}
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 transition rounded-xl mx-1 ${active ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                     style={{ width: 'calc(100% - 8px)' }}
                   >
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
                       {initials(partner.name)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{partner.name || 'Unknown'}</p>
+                      <p className="font-medium text-sm text-gray-800 truncate">{partner.name || 'Unknown'}</p>
                       <p className="text-xs text-gray-400 truncate mt-0.5">
-                        {chat.lastMessage || 'No messages yet'}
+                        {chat.lastMessage === '📷 Photo'
+                          ? <span className="flex items-center gap-1"><ImageIcon size={10} /> Photo</span>
+                          : (chat.lastMessage || 'No messages yet')}
                       </p>
                     </div>
                   </button>
@@ -239,44 +267,68 @@ export default function ConversationsPage() {
         )}
       </div>
 
-      {/* ── Right panel ── */}
+      {/* ── Right: conversation ── */}
       {selectedChat ? (
         <div className="flex-1 flex flex-col min-w-0">
           {/* Header */}
           <div className="px-6 py-4 border-b border-gray-100 bg-white flex items-center gap-3 flex-shrink-0">
-            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm">
+            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm flex-shrink-0">
               {initials(getPartner(selectedChat).name)}
             </div>
             <div>
-              <p className="font-semibold text-sm text-gray-800">
-                {getPartner(selectedChat).name || 'User'}
-              </p>
+              <p className="font-semibold text-sm text-gray-800">{getPartner(selectedChat).name || 'User'}</p>
               <p className="text-xs text-gray-400">Support conversation</p>
             </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-3">
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1">
             {messages.length === 0 && (
-              <p className="text-center text-gray-300 text-sm mt-12">
-                No messages yet. Say hello!
-              </p>
+              <p className="text-center text-gray-300 text-sm mt-12">No messages yet. Say hello!</p>
             )}
             {messages.map((msg, i) => {
               const isSupport = msg.sendby === SUPPORT_UID;
+              const prev = i > 0 ? messages[i - 1] : null;
+              const showDate = !prev || !sameDay(prev.time, msg.time);
               return (
-                <div key={i} className={`flex ${isSupport ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-xs lg:max-w-md px-4 py-2.5 text-sm break-words ${
-                      isSupport
-                        ? 'bg-blue-600 text-white rounded-2xl rounded-br-sm'
-                        : 'bg-white text-gray-800 rounded-2xl rounded-bl-sm shadow-sm border border-gray-100'
-                    }`}
-                  >
-                    <p>{msg.message}</p>
-                    <p className={`text-xs mt-1 text-right ${isSupport ? 'text-blue-200' : 'text-gray-400'}`}>
-                      {formatTime(msg.time)}
-                    </p>
+                <div key={i}>
+                  {showDate && (
+                    <div className="flex items-center justify-center my-4">
+                      <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+                        {formatDate(msg.time)}
+                      </span>
+                    </div>
+                  )}
+                  <div className={`flex ${isSupport ? 'justify-end' : 'justify-start'} mb-1`}>
+                    {msg.type === 'image' ? (
+                      <div
+                        className={`max-w-xs cursor-pointer rounded-2xl overflow-hidden shadow-sm ${isSupport ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
+                        onClick={() => setLightboxUrl(msg.message)}
+                      >
+                        <img
+                          src={msg.message}
+                          alt="Sent image"
+                          className="block max-h-64 object-cover w-full"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                        <div className={`px-2 py-1 text-right text-xs ${isSupport ? 'bg-blue-600 text-blue-200' : 'bg-white text-gray-400'}`}>
+                          {formatTime(msg.time)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        className={`max-w-xs lg:max-w-md px-4 py-2.5 text-sm break-words ${
+                          isSupport
+                            ? 'bg-blue-600 text-white rounded-2xl rounded-br-sm'
+                            : 'bg-white text-gray-800 rounded-2xl rounded-bl-sm shadow-sm border border-gray-100'
+                        }`}
+                      >
+                        <p className="leading-relaxed">{msg.message}</p>
+                        <p className={`text-xs mt-1 text-right ${isSupport ? 'text-blue-200' : 'text-gray-400'}`}>
+                          {formatTime(msg.time)}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -284,22 +336,60 @@ export default function ConversationsPage() {
             <div ref={bottomRef} />
           </div>
 
+          {/* Upload progress */}
+          {uploadingImage && (
+            <div className="px-6 py-2 bg-white border-t border-gray-100 flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 flex-shrink-0" />
+              <span className="text-xs text-gray-400">Uploading image…</span>
+            </div>
+          )}
+
           {/* Input */}
-          <div className="px-6 py-4 bg-white border-t border-gray-100 flex gap-3 flex-shrink-0">
+          <div className="px-4 py-3 bg-white border-t border-gray-100 flex items-end gap-2 flex-shrink-0">
+            {/* Hidden file input */}
             <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-              placeholder="Type a message…"
-              className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-transparent"
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
             />
+            {/* Attach button */}
             <button
-              onClick={sendMessage}
-              disabled={!draft.trim() || sending}
-              className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition flex-shrink-0"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingImage}
+              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600 transition disabled:opacity-40"
+              title="Send image"
             >
-              <Send size={16} />
+              <Paperclip size={16} />
             </button>
+
+            {/* Textarea */}
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(e) => { setDraft(e.target.value); e.target.style.height = 'auto'; e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`; }}
+              onKeyDown={handleKeyDown}
+              placeholder="Type a message…"
+              rows={1}
+              className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-transparent leading-relaxed"
+              style={{ minHeight: '40px', maxHeight: '120px' }}
+            />
+
+            {/* Send button */}
+            {sending ? (
+              <div className="w-9 h-9 flex-shrink-0 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
+              </div>
+            ) : (
+              <button
+                onClick={sendMessage}
+                disabled={!draft.trim() || sending}
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-30 transition"
+              >
+                <Send size={15} />
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -317,14 +407,10 @@ export default function ConversationsPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-[80vh]">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-800">Start a Conversation</h3>
-              <button
-                onClick={() => { setShowNewChat(false); setUserSearch(''); }}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
-              >
+              <button onClick={() => { setShowNewChat(false); setUserSearch(''); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition">
                 <X size={16} />
               </button>
             </div>
-
             <div className="px-4 py-3 border-b border-gray-100">
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -337,7 +423,6 @@ export default function ConversationsPage() {
                 />
               </div>
             </div>
-
             <div className="flex-1 overflow-y-auto p-3">
               {loadingUsers ? (
                 <div className="flex items-center justify-center py-8">
@@ -348,17 +433,9 @@ export default function ConversationsPage() {
               ) : (
                 filteredUsers.slice(0, 30).map((user) => {
                   const name = (user['1_name'] as string) || (user['name'] as string) || 'Unknown';
-                  const sub =
-                    (user['3_phoneNumber'] as string) ||
-                    (user['2_email'] as string) ||
-                    (user['email'] as string) ||
-                    '';
+                  const sub = (user['3_phoneNumber'] as string) || (user['2_email'] as string) || (user['email'] as string) || '';
                   return (
-                    <button
-                      key={user.id}
-                      onClick={() => startConversation(user)}
-                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-blue-50 flex items-center gap-3 transition"
-                    >
+                    <button key={user.id} onClick={() => startConversation(user)} className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-blue-50 flex items-center gap-3 transition">
                       <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm font-semibold flex-shrink-0">
                         {initials(name)}
                       </div>
@@ -372,6 +449,24 @@ export default function ConversationsPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Image lightbox ── */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button className="absolute top-4 right-4 text-white hover:text-gray-300 transition" onClick={() => setLightboxUrl(null)}>
+            <X size={28} />
+          </button>
+          <img
+            src={lightboxUrl}
+            alt="Full size"
+            className="max-w-full max-h-full rounded-xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>
