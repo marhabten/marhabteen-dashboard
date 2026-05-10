@@ -56,6 +56,8 @@ interface DetailsForm {
   beds: number;
   bathroom: number;
   people: number;
+  locationTitleEn: string;
+  locationTitleAr: string;
 }
 
 function formFromProperty(p: Property): DetailsForm {
@@ -73,6 +75,8 @@ function formFromProperty(p: Property): DetailsForm {
     beds: (ru.beds as number) ?? 1,
     bathroom: (ru.bathroom as number) ?? 1,
     people: (ru.people as number) ?? 0,
+    locationTitleEn: p.locationTitle ?? "",
+    locationTitleAr: p.locationDescription ?? "",
   };
 }
 
@@ -270,6 +274,8 @@ export default function PropertyDetailsPage() {
       isBooked: form.isBooked,
       squreFeet: form.squareFeet,       // Firestore uses this spelling
       cancelationPolicy: form.cancelationPolicy,
+      locationTitle: form.locationTitleEn,
+      locationDescription: form.locationTitleAr,
       rentalUnit,
     });
 
@@ -472,6 +478,17 @@ export default function PropertyDetailsPage() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label>Location (English)</Label>
+                <TextInput value={form.locationTitleEn} onChange={(v) => set("locationTitleEn", v)} placeholder="e.g. Tripoli, Libya" />
+              </div>
+              <div>
+                <Label>Location (Arabic)</Label>
+                <TextInput value={form.locationTitleAr} onChange={(v) => set("locationTitleAr", v)} placeholder="e.g. طرابلس، ليبيا" />
+              </div>
+            </div>
+
             <div>
               <Label>Cancellation Policy</Label>
               <textarea
@@ -529,6 +546,8 @@ export default function PropertyDetailsPage() {
         ) : (
           /* ── Read-only view ── */
           <div>
+            <InfoRow label="Location (EN)" value={property.locationTitle} />
+            <InfoRow label="Location (AR)" value={property.locationDescription} />
             <InfoRow label="Owner" value={property.ownerPropertyName} />
             <InfoRow label="Email" value={property.email} />
             <InfoRow label="Place Type" value={property.placeType} />

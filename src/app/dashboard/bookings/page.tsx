@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Search, Trash2, Users, DollarSign, BookOpen, X } from 'lucide-react';
-import { deleteBookingById, fetchBookings } from '../../service';
+import { CalendarDays, Search, Trash2, Users, DollarSign, BookOpen, X, Building2 } from 'lucide-react';
+import { deleteBookingById, fetchBookings, fetchProperties } from '../../service';
 
 type Booking = {
   id: string;
@@ -72,23 +72,30 @@ function StatCard({ label, value, icon, color }: {
 
 export default function BookingsPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [propertyNames, setPropertyNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [sortBy, setSortBy] = useState<'date' | 'property'>('date');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchBookings().then((data) => {
-      const filtered = data.filter((b: Booking) => b.billingMethod !== 'external');
-      // Sort newest check-in first (fall back to id alphabetical)
-      filtered.sort((a: Booking, b: Booking) => {
+    Promise.all([fetchBookings(), fetchProperties()]).then(([bookingData, propertyData]) => {
+      const filtered = (bookingData as Booking[]).filter((b) => b.billingMethod !== 'external');
+      filtered.sort((a, b) => {
         if (!a.checkIn && !b.checkIn) return 0;
         if (!a.checkIn) return 1;
         if (!b.checkIn) return -1;
         return b.checkIn.localeCompare(a.checkIn);
       });
       setBookings(filtered);
+      // Build propertyId → name map
+      const nameMap: Record<string, string> = {};
+      (propertyData as { id: string; locationTitle?: string }[]).forEach((p) => {
+        nameMap[p.id] = p.locationTitle || p.id;
+      });
+      setPropertyNames(nameMap);
       setLoading(false);
     });
   }, []);
@@ -103,12 +110,14 @@ export default function BookingsPage() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return bookings.filter((b) => {
+    const result = bookings.filter((b) => {
+      const propName = (propertyNames[b.propertyId || ''] || '').toLowerCase();
       const matchSearch =
         !q ||
         b.fullName?.toLowerCase().includes(q) ||
         b.email?.toLowerCase().includes(q) ||
         b.phoneNumber?.includes(q) ||
+        propName.includes(q) ||
         b.propertyId?.toLowerCase().includes(q) ||
         b.id.toLowerCase().includes(q);
       const matchStatus =
@@ -116,7 +125,15 @@ export default function BookingsPage() {
         b.paymentStatus?.toLowerCase() === filterStatus;
       return matchSearch && matchStatus;
     });
-  }, [bookings, search, filterStatus]);
+    if (sortBy === 'property') {
+      result.sort((a, b) => {
+        const na = propertyNames[a.propertyId || ''] || '';
+        const nb = propertyNames[b.propertyId || ''] || '';
+        return na.localeCompare(nb);
+      });
+    }
+    return result;
+  }, [bookings, search, filterStatus, sortBy, propertyNames]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this booking?')) return;
@@ -169,6 +186,14 @@ export default function BookingsPage() {
           <option value="pending">Pending</option>
           <option value="refunded">Refunded</option>
         </select>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'date' | 'property')}
+          className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-transparent"
+        >
+          <option value="date">Sort: Date</option>
+          <option value="property">Sort: Property</option>
+        </select>
       </div>
 
       {/* Table — desktop */}
@@ -177,11 +202,11 @@ export default function BookingsPage() {
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wide text-gray-400">
               <th className="text-left px-5 py-3 font-medium">Guest</th>
+              <th className="text-left px-5 py-3 font-medium">Property</th>
               <th className="text-left px-5 py-3 font-medium">Dates</th>
               <th className="text-left px-5 py-3 font-medium">Amount</th>
               <th className="text-left px-5 py-3 font-medium">Payment</th>
-              <th className="text-left px-5 py-3 font-medium">Host</th>
-              <th className="text-left px-5 py-3 font-medium">Guest</th>
+              <th className="text-left px-5 py-3 font-medium">Status</th>
               <th className="px-5 py-3" />
             </tr>
           </thead>
@@ -202,6 +227,14 @@ export default function BookingsPage() {
                   <td className="px-5 py-3.5">
                     <p className="font-medium text-gray-800">{b.fullName || '—'}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{b.email || b.phoneNumber || ''}</p>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-1.5 text-gray-700">
+                      <Building2 size={13} className="text-gray-400 flex-shrink-0" />
+                      <span className="text-sm truncate max-w-[140px]" title={propertyNames[b.propertyId || ''] || b.propertyId}>
+                        {propertyNames[b.propertyId || ''] || b.propertyId || '—'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1.5 text-gray-600">
@@ -229,14 +262,6 @@ export default function BookingsPage() {
                       <Badge
                         label={STATUS_LABELS[b.hostStatus] || b.hostStatus}
                         colorClass={STATUS_COLORS[b.hostStatus] || 'bg-gray-100 text-gray-600'}
-                      />
-                    ) : <span className="text-gray-300 text-xs">—</span>}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    {b.guestStatus ? (
-                      <Badge
-                        label={STATUS_LABELS[b.guestStatus] || b.guestStatus}
-                        colorClass={STATUS_COLORS[b.guestStatus] || 'bg-gray-100 text-gray-600'}
                       />
                     ) : <span className="text-gray-300 text-xs">—</span>}
                   </td>
