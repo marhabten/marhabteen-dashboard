@@ -254,6 +254,33 @@ export async function createAdminUser(email: string, password: string) {
     }
 }
 
+// Update multiple property fields at once
+export async function updatePropertyDetails(
+  propertyId: string,
+  fields: Record<string, unknown>
+) {
+  try {
+    const propertyRef = doc(db, "properties", propertyId);
+    await updateDoc(propertyRef, fields);
+    return true;
+  } catch (error) {
+    console.error("Error updating property details:", error);
+    return false;
+  }
+}
+
+// Toggle isFeatured on a property
+export async function toggleFeatured(propertyId: string, isFeatured: boolean) {
+    try {
+        const propertyRef = doc(db, "properties", propertyId);
+        await updateDoc(propertyRef, { isFeatured });
+        return true;
+    } catch (error) {
+        console.error("Error toggling featured:", error);
+        return false;
+    }
+}
+
 // Fetch all bookings
 export async function fetchBookings() {
     try {
@@ -266,5 +293,16 @@ export async function fetchBookings() {
     } catch (error) {
         console.error("Error fetching bookings:", error);
         return [];
+    }
+}
+
+// Delete a booking by ID
+export async function deleteBookingById(bookingId: string) {
+    try {
+        await deleteDoc(doc(db, "bookings", bookingId));
+        return true;
+    } catch (error) {
+        console.error("Error deleting booking:", error);
+        return false;
     }
 }

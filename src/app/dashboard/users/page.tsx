@@ -1,9 +1,11 @@
 "use client";
 import { Eye, EyeOff, PlusCircle, SearchIcon, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createAdminUser, deleteUserById, fetchUsers } from "../../service";
 
 export default function UsersPage() {
+  const router = useRouter();
   const [users, setUsers] = useState<any[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -137,12 +139,21 @@ export default function UsersPage() {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => handleDelete(user.id)}
-                className="text-red-500 hover:text-red-700 transition"
-              >
-                <Trash2 size={20} />
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => router.push(`/dashboard/users/${user.id}`)}
+                  className="text-blue-500 hover:text-blue-700 transition"
+                  title="View user"
+                >
+                  <Eye size={20} />
+                </button>
+                <button
+                  onClick={() => handleDelete(user.id)}
+                  className="text-red-500 hover:text-red-700 transition"
+                >
+                  <Trash2 size={20} />
+                </button>
+              </div>
             </div>
           ))
         ) : (

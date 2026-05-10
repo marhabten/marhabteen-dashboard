@@ -1,7 +1,7 @@
 "use client";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
-import { CalendarDays, Home, LayoutDashboard, Lock, LogOut, Menu, MessageSquare, Ticket, Users, X } from "lucide-react"; // Import Ticket icon
+import { CalendarDays, Home, LayoutDashboard, LogOut, Menu, MessageSquare, Ticket, Users, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -24,7 +24,8 @@ const SideBar = () => {
         { name: "Properties", path: "/dashboard/properties", icon: <Home size={24} /> },
         { name: "Users", path: "/dashboard/users", icon: <Users size={24} /> },
         { name: "Bookings", path: "/dashboard/bookings", icon: <CalendarDays size={24} /> },
-        { name: "Vouchers", path: "/dashboard/vouchers", icon: <Ticket size={24} /> }, // New Vouchers Section
+        { name: "Vouchers", path: "/dashboard/vouchers", icon: <Ticket size={24} /> },
+        { name: "Conversations", path: "/dashboard/conversations", icon: <MessageSquare size={24} /> },
     ];
 
     return (
@@ -71,14 +72,6 @@ const SideBar = () => {
                         ))}
                     </ul>
 
-                    {/* Locked Conversations Section */}
-                    <div className="flex items-center justify-between px-4 py-3 mt-4 text-gray-400 cursor-not-allowed pointer-events-none">
-                        <div className="flex items-center gap-3">
-                            <MessageSquare size={24} />
-                            <span>Conversations</span>
-                        </div>
-                        <Lock size={20} />
-                    </div>
                 </div>
 
                 {/* Logout Button */}

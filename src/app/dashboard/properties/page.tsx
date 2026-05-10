@@ -1,6 +1,6 @@
 "use client";
 import { deletePropertyById, fetchProperties } from "@/app/service";
-import { Eye, Search } from "lucide-react";
+import { Eye, Search, Star } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -78,11 +78,18 @@ export default function PropertiesPage() {
                             className="bg-white shadow-md rounded-lg p-4 cursor-pointer transition hover:shadow-lg"
                             onClick={() => router.push(`/dashboard/properties/${property.id}`)}
                         >
-                            <img
-                                src={property.images[0] || property.imageUrl}
-                                alt={property.locationTitle}
-                                className="w-full h-40 object-cover rounded-lg"
-                            />
+                            <div className="relative">
+                                <img
+                                    src={property.images?.[0] || property.imageUrl}
+                                    alt={property.locationTitle}
+                                    className="w-full h-40 object-cover rounded-lg"
+                                />
+                                {property.isFeatured && (
+                                    <span className="absolute top-2 left-2 flex items-center gap-1 bg-amber-400 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                                        <Star size={10} fill="white" /> Featured
+                                    </span>
+                                )}
+                            </div>
                             <h2 className="text-lg font-semibold mt-2">{property.locationTitle}</h2>
                             <p className="text-sm font-semibold mt-2">Owner: {property.ownerPropertyName}</p>
                             <p className="text-sm text-gray-700">Type: {property.placeType}</p>
