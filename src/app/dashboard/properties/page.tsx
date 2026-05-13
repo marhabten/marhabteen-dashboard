@@ -91,6 +91,11 @@ export default function PropertiesPage() {
                                 )}
                             </div>
                             <h2 className="text-lg font-semibold mt-2">{property.locationTitle}</h2>
+                            {(property.location?.address || property.location?.locationDescription) && (
+                                <p className="text-sm text-gray-500 mt-0.5 truncate">
+                                    📍 {property.location?.address || property.location?.locationDescription}
+                                </p>
+                            )}
                             <p className="text-sm font-semibold mt-2">Owner: {property.ownerPropertyName}</p>
                             <p className="text-sm text-gray-700">Type: {property.placeType}</p>
 

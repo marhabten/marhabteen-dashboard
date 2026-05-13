@@ -22,10 +22,18 @@ interface RentalUnit {
   [key: string]: unknown;
 }
 
+interface Location {
+  address?: string;
+  locationDescription?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
 interface Property {
   id: string;
   locationTitle: string;
   locationDescription: string;
+  location?: Location;
   imageUrl: string;
   images: string[];
   ownerPropertyName: string;
@@ -75,8 +83,8 @@ function formFromProperty(p: Property): DetailsForm {
     beds: (ru.beds as number) ?? 1,
     bathroom: (ru.bathroom as number) ?? 1,
     people: (ru.people as number) ?? 0,
-    locationTitleEn: p.locationTitle ?? "",
-    locationTitleAr: p.locationDescription ?? "",
+    locationTitleEn: p.location?.address ?? "",
+    locationTitleAr: p.location?.locationDescription ?? "",
   };
 }
 
@@ -274,8 +282,11 @@ export default function PropertyDetailsPage() {
       isBooked: form.isBooked,
       squreFeet: form.squareFeet,       // Firestore uses this spelling
       cancelationPolicy: form.cancelationPolicy,
-      locationTitle: form.locationTitleEn,
-      locationDescription: form.locationTitleAr,
+      location: {
+        ...(property.location ?? {}),
+        address: form.locationTitleEn,
+        locationDescription: form.locationTitleAr,
+      },
       rentalUnit,
     });
 
@@ -480,11 +491,11 @@ export default function PropertyDetailsPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label>Location (English)</Label>
+                <Label>Address (English)</Label>
                 <TextInput value={form.locationTitleEn} onChange={(v) => set("locationTitleEn", v)} placeholder="e.g. Tripoli, Libya" />
               </div>
               <div>
-                <Label>Location (Arabic)</Label>
+                <Label>Address (Arabic)</Label>
                 <TextInput value={form.locationTitleAr} onChange={(v) => set("locationTitleAr", v)} placeholder="e.g. طرابلس، ليبيا" />
               </div>
             </div>
@@ -546,8 +557,8 @@ export default function PropertyDetailsPage() {
         ) : (
           /* ── Read-only view ── */
           <div>
-            <InfoRow label="Location (EN)" value={property.locationTitle} />
-            <InfoRow label="Location (AR)" value={property.locationDescription} />
+            <InfoRow label="Address (EN)" value={property.location?.address} />
+            <InfoRow label="Address (AR)" value={property.location?.locationDescription} />
             <InfoRow label="Owner" value={property.ownerPropertyName} />
             <InfoRow label="Email" value={property.email} />
             <InfoRow label="Place Type" value={property.placeType} />

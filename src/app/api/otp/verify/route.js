@@ -1,14 +1,10 @@
 import { admin } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
-import twilio from 'twilio';
-
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
 
 export async function POST(req) {
   try {
-    const { phone, code } = await req.json();
+    const { phone, code, purpose } = await req.json();
+    // purpose: 'signup' (default) | 'reset'
 
     if (!phone || !code) {
       return NextResponse.json(
@@ -17,26 +13,40 @@ export async function POST(req) {
       );
     }
 
-    if (!accountSid || !authToken || !serviceSid) {
-      console.error('[OTP/Verify] Missing Twilio env vars');
-      return NextResponse.json({ error: 'OTP service not configured' }, { status: 500 });
+    // Look up the pin stored by /send
+    const sessionKey = phone.replace(/\+/g, '').replace(/\s/g, '');
+    const sessionSnap = await admin.firestore.collection('otp_sessions').doc(sessionKey).get();
+
+    if (!sessionSnap.exists) {
+      return NextResponse.json({ error: 'No OTP session found. Please request a new code.' }, { status: 400 });
     }
 
-    const client = twilio(accountSid, authToken);
-
-    console.log(`[OTP/Verify] Checking code for ${phone}`);
-
-    const check = await client.verify.v2
-      .services(serviceSid)
-      .verificationChecks.create({ to: phone, code });
-
-    console.log(`[OTP/Verify] Check status: ${check.status} for ${phone}`);
-
-    if (check.status !== 'approved') {
-      return NextResponse.json({ error: 'Invalid or expired OTP code' }, { status: 400 });
+    const session = sessionSnap.data();
+    if (Date.now() > session.expiresAt) {
+      await admin.firestore.collection('otp_sessions').doc(sessionKey).delete();
+      return NextResponse.json({ error: 'OTP has expired. Please request a new code.' }, { status: 400 });
     }
 
-    // OTP approved — get or create Firebase Auth user for this phone number
+    const { pin } = session;
+    console.log(`[OTP/Verify] Comparing code for ${phone}`);
+
+    if (!pin || String(code).trim() !== String(pin).trim()) {
+      console.log(`[OTP/Verify] Code mismatch for ${phone}`);
+      return NextResponse.json({ error: 'Invalid OTP code' }, { status: 400 });
+    }
+
+    console.log(`[OTP/Verify] Code matched for ${phone}`);
+
+    // Clean up session
+    await admin.firestore.collection('otp_sessions').doc(sessionKey).delete();
+
+    // For reset password — just confirm verification, no Firebase user creation
+    if (purpose === 'reset') {
+      console.log(`[OTP/Verify] Reset flow verified for ${phone}`);
+      return NextResponse.json({ success: true, verified: true });
+    }
+
+    // For signup — get or create Firebase Auth user, issue custom token
     let uid;
     try {
       const existing = await admin.auth.getUserByPhoneNumber(phone);

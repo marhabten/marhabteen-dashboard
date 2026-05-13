@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Search, Trash2, Users, DollarSign, BookOpen, X, Building2 } from 'lucide-react';
+import { CalendarDays, Search, Trash2, Users, DollarSign, BookOpen, X, Building2, Plus, Pencil } from 'lucide-react';
 import { deleteBookingById, fetchBookings, fetchProperties } from '../../service';
+import ManualBookingModal from './ManualBookingModal';
+import EditBookingModal from './EditBookingModal';
 
 type Booking = {
   id: string;
@@ -79,6 +81,9 @@ export default function BookingsPage() {
   const [sortBy, setSortBy] = useState<'date' | 'property'>('date');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [showManualBooking, setShowManualBooking] = useState(false);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [allProperties, setAllProperties] = useState<any[]>([]);
 
   useEffect(() => {
     Promise.all([fetchBookings(), fetchProperties()]).then(([bookingData, propertyData]) => {
@@ -96,6 +101,7 @@ export default function BookingsPage() {
         nameMap[p.id] = p.locationTitle || p.id;
       });
       setPropertyNames(nameMap);
+      setAllProperties(propertyData as any[]);
       setLoading(false);
     });
   }, []);
@@ -103,9 +109,14 @@ export default function BookingsPage() {
   const stats = useMemo(() => {
     const total = bookings.length;
     const revenue = bookings.reduce((s, b) => s + (b.paid ?? 0), 0);
-    const paid = bookings.filter(b => b.paymentStatus === 'Paid' || b.paymentStatus === 'paid').length;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const upcoming = bookings.filter((b) => {
+      if (!b.checkIn) return false;
+      const [d, m, y] = b.checkIn.split('/').map(Number);
+      return new Date(y, m - 1, d) >= today;
+    }).length;
     const guests = bookings.reduce((s, b) => s + (b.guests ?? 1), 0);
-    return { total, revenue, paid, guests };
+    return { total, revenue, upcoming, guests };
   }, [bookings]);
 
   const filtered = useMemo(() => {
@@ -155,12 +166,21 @@ export default function BookingsPage() {
 
   return (
     <div className="p-4 md:p-8 space-y-6 md:mt-0 mt-12">
-      <h1 className="text-2xl font-bold text-gray-900">Bookings</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold text-gray-900">Bookings</h1>
+        <button
+          onClick={() => setShowManualBooking(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition flex-shrink-0"
+        >
+          <Plus size={16} />
+          Manual Booking
+        </button>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Bookings" value={stats.total} icon={<BookOpen size={20} />} color="bg-blue-600" />
-        <StatCard label="Paid Bookings" value={stats.paid} icon={<DollarSign size={20} />} color="bg-emerald-500" />
+        <StatCard label="Upcoming Bookings" value={stats.upcoming} icon={<CalendarDays size={20} />} color="bg-emerald-500" />
         <StatCard label="Total Revenue" value={`${stats.revenue.toLocaleString()} LYD`} icon={<DollarSign size={20} />} color="bg-purple-500" />
         <StatCard label="Total Guests" value={stats.guests} icon={<Users size={20} />} color="bg-indigo-500" />
       </div>
@@ -266,13 +286,23 @@ export default function BookingsPage() {
                     ) : <span className="text-gray-300 text-xs">—</span>}
                   </td>
                   <td className="px-5 py-3.5">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDelete(b.id); }}
-                      disabled={deleting === b.id}
-                      className="text-gray-300 hover:text-red-500 transition disabled:opacity-40"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditingBooking(b); }}
+                        className="text-gray-300 hover:text-blue-500 transition"
+                        title="Edit"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(b.id); }}
+                        disabled={deleting === b.id}
+                        className="text-gray-300 hover:text-red-500 transition disabled:opacity-40"
+                        title="Delete"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -303,6 +333,13 @@ export default function BookingsPage() {
                     colorClass={PAYMENT_COLORS[b.paymentStatus || ''] || 'bg-gray-100 text-gray-600'}
                   />
                   <button
+                    onClick={(e) => { e.stopPropagation(); setEditingBooking(b); }}
+                    className="text-gray-300 hover:text-blue-500 transition"
+                    title="Edit"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
                     onClick={(e) => { e.stopPropagation(); handleDelete(b.id); }}
                     disabled={deleting === b.id}
                     className="text-gray-300 hover:text-red-500 transition disabled:opacity-40"
@@ -322,6 +359,31 @@ export default function BookingsPage() {
           ))
         )}
       </div>
+
+      {editingBooking && (
+        <EditBookingModal
+          booking={editingBooking}
+          propertyName={propertyNames[editingBooking.propertyId || '']}
+          onClose={() => setEditingBooking(null)}
+          onSaved={(updated) => {
+            setBookings((prev) => prev.map((b) => b.id === updated.id ? updated : b));
+            setSelectedBooking((prev) => prev?.id === updated.id ? updated : prev);
+            setEditingBooking(null);
+          }}
+        />
+      )}
+
+      {showManualBooking && (
+        <ManualBookingModal
+          properties={allProperties}
+          onClose={() => setShowManualBooking(false)}
+          onCreated={(booking) => {
+            setBookings((prev) => [booking, ...prev]);
+            // Update property name map if needed
+            setPropertyNames((prev) => ({ ...prev, [booking.propertyId]: allProperties.find(p => p.id === booking.propertyId)?.locationTitle || booking.propertyId }));
+          }}
+        />
+      )}
 
       {/* Detail drawer */}
       {selectedBooking && (
@@ -374,11 +436,18 @@ export default function BookingsPage() {
               </Section>
             </div>
 
-            <div className="px-6 pb-5">
+            <div className="px-6 pb-5 flex gap-3">
+              <button
+                onClick={() => setEditingBooking(selectedBooking)}
+                className="flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 py-2.5 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2"
+              >
+                <Pencil size={15} />
+                Edit Booking
+              </button>
               <button
                 onClick={() => handleDelete(selectedBooking.id)}
                 disabled={deleting === selectedBooking.id}
-                className="w-full bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 py-2.5 rounded-xl text-sm font-medium transition disabled:opacity-40 flex items-center justify-center gap-2"
+                className="flex-1 bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 py-2.5 rounded-xl text-sm font-medium transition disabled:opacity-40 flex items-center justify-center gap-2"
               >
                 <Trash2 size={15} />
                 {deleting === selectedBooking.id ? 'Deleting…' : 'Delete Booking'}

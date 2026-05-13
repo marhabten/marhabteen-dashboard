@@ -1,6 +1,6 @@
 import { auth, db } from "@/lib/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { addDoc, arrayRemove, collection, deleteDoc, doc, getDocs, setDoc, Timestamp, updateDoc } from "firebase/firestore";
+import { addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, getDocs, getDoc, limit, orderBy, query, setDoc, Timestamp, updateDoc } from "firebase/firestore";
 
 // Fetch properties from Firestore
 export async function fetchProperties() {
@@ -44,7 +44,16 @@ export async function deleteUserById(userId: string) {
     }
 }
 
-import { limit, orderBy, query } from "firebase/firestore";
+// Update a user's wallet balance
+export async function updateUserWallet(userId: string, newBalance: number) {
+    try {
+        await updateDoc(doc(db, "users", userId), { wallet: newBalance });
+        return true;
+    } catch (error) {
+        console.error("Error updating wallet:", error);
+        return false;
+    }
+}
 
 // Fetch total properties & recently added properties
 export async function fetchPropertyStats() {
@@ -90,8 +99,6 @@ interface Property {
     squareFeet?: string;
     cancelationPolicy?: string;
 }
-
-import { getDoc } from "firebase/firestore";
 
 export async function fetchPropertyById(propertyId: string) {
     try {
@@ -305,4 +312,146 @@ export async function deleteBookingById(bookingId: string) {
         console.error("Error deleting booking:", error);
         return false;
     }
+}
+
+export async function createManualBooking(booking: {
+  id: string;
+  fullName: string;
+  email: string;
+  phoneNumber: string;
+  guests: number;
+  checkIn: string;   // "dd/MM/yyyy"
+  checkOut: string;  // "dd/MM/yyyy"
+  billingMethod: string;
+  paymentStatus: string;
+  notes: string;
+  propertyId: string;
+  hostId: string;
+  guestId: string;
+  totalPrice: number;
+  remainingToPay: number;
+  paid: number;
+}) {
+  try {
+    // 1. Write booking document
+    await setDoc(doc(db, 'bookings', booking.id), {
+      ...booking,
+      hostStatus: 'pending',
+      guestStatus: 'pending',
+    });
+
+    // 2. Add booking ID to user's bookings array (only for real users)
+    if (booking.guestId) {
+      try {
+        await updateDoc(doc(db, 'users', booking.guestId), {
+          bookings: arrayUnion(booking.id),
+        });
+      } catch { /* user may not exist — skip */ }
+    }
+
+    // 3. Mark property dates as booked
+    const propertyRef = doc(db, 'properties', booking.propertyId);
+    const propertySnap = await getDoc(propertyRef);
+    if (propertySnap.exists()) {
+      const data = propertySnap.data();
+      const dates: any[] = data.dates || [];
+
+      const parseFS = (s: string) => {
+        const [d, m, y] = s.split('/').map(Number);
+        return new Date(y, m - 1, d);
+      };
+
+      const checkIn = parseFS(booking.checkIn);
+      const checkOut = parseFS(booking.checkOut);
+
+      const updated = dates.map((entry) => {
+        const entryDate = parseFS(entry.date);
+        if (entryDate >= checkIn && entryDate < checkOut) {
+          return { ...entry, isBooked: true, isAvailable: false, bookingId: booking.id };
+        }
+        return entry;
+      });
+
+      await updateDoc(propertyRef, { dates: updated });
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error creating manual booking:', error);
+    return false;
+  }
+}
+
+export async function updateBooking(
+  bookingId: string,
+  oldCheckIn: string,   // "dd/MM/yyyy" — original dates to free
+  oldCheckOut: string,
+  updated: {
+    fullName: string;
+    email: string;
+    phoneNumber: string;
+    guests: number;
+    checkIn: string;    // "dd/MM/yyyy" — new dates
+    checkOut: string;
+    billingMethod: string;
+    paymentStatus: string;
+    hostStatus: string;
+    guestStatus: string;
+    notes: string;
+    totalPrice: number;
+    remainingToPay: number;
+    paid: number;
+    propertyId: string;
+  }
+) {
+  try {
+    const parseFS = (s: string) => {
+      const [d, m, y] = s.split('/').map(Number);
+      return new Date(y, m - 1, d);
+    };
+
+    const propertyRef = doc(db, 'properties', updated.propertyId);
+    const propertySnap = await getDoc(propertyRef);
+
+    if (propertySnap.exists()) {
+      const data = propertySnap.data();
+      const dates: any[] = data.dates || [];
+
+      const oldCI = parseFS(oldCheckIn);
+      const oldCO = parseFS(oldCheckOut);
+      const newCI = parseFS(updated.checkIn);
+      const newCO = parseFS(updated.checkOut);
+
+      const patchedDates = dates.map((entry) => {
+        const d = parseFS(entry.date);
+        const wasBooked = entry.bookingId === bookingId && d >= oldCI && d < oldCO;
+        const willBeBooked = d >= newCI && d < newCO;
+
+        if (wasBooked && !willBeBooked) {
+          // Free this date
+          return { ...entry, isBooked: false, isAvailable: true, bookingId: null };
+        }
+        if (!wasBooked && willBeBooked) {
+          // Reserve this date
+          return { ...entry, isBooked: true, isAvailable: false, bookingId };
+        }
+        if (wasBooked && willBeBooked) {
+          // Still reserved — keep bookingId
+          return { ...entry, isBooked: true, isAvailable: false, bookingId };
+        }
+        return entry;
+      });
+
+      await updateDoc(propertyRef, { dates: patchedDates });
+    }
+
+    await updateDoc(doc(db, 'bookings', bookingId), {
+      ...updated,
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Error updating booking:', error);
+    return false;
+  }
 }

@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
         <div className="flex h-screen">
             <SideBar />
-            <main className="flex-1 p-6 overflow-y-auto bg-gray-50">{children}</main>
+            <main className="flex-1 p-6 overflow-y-auto bg-gray-50 relative">{children}</main>
         </div>
     );
 }

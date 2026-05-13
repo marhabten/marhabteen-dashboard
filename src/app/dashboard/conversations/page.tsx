@@ -14,7 +14,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { Image as ImageIcon, MessageSquare, Paperclip, Plus, Search, Send, X } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, MessageSquare, Paperclip, Plus, Search, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 const SUPPORT_UID = 'support';
@@ -129,6 +129,9 @@ export default function ConversationsPage() {
     setSending(true);
     const text = draft.trim();
     setDraft('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     try {
       await addDoc(collection(db, 'Chats', selectedChat.id, 'messages'), {
         message: text,
@@ -213,11 +216,26 @@ export default function ConversationsPage() {
     }
   };
 
+  const handleBack = () => setSelectedChat(null);
+
+  // On mobile: show list when no chat selected, show conversation when selected.
+  // On desktop (md+): always show both panels side by side.
+  const showList = !selectedChat;   // mobile only logic (desktop always shows list via md:flex)
+  const showConvo = !!selectedChat; // mobile only logic
+
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="absolute inset-0 flex overflow-hidden bg-gray-50">
+
       {/* ── Left: chat list ── */}
-      <div className="w-72 flex-shrink-0 flex flex-col bg-white border-r border-gray-100">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div
+        className={`
+          flex-col bg-white border-r border-gray-100
+          w-full md:w-72 md:flex-shrink-0
+          ${showList ? 'flex' : 'hidden'}
+          md:flex
+        `}
+      >
+        <div className="pl-16 pr-5 lg:pl-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-semibold text-gray-800">Support Chats</h2>
           <button
             onClick={openNewChatModal}
@@ -248,7 +266,7 @@ export default function ConversationsPage() {
                     className={`w-full text-left px-4 py-3 flex items-center gap-3 transition rounded-xl mx-1 ${active ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
                     style={{ width: 'calc(100% - 8px)' }}
                   >
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
                       {initials(partner.name)}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -259,6 +277,9 @@ export default function ConversationsPage() {
                           : (chat.lastMessage || 'No messages yet')}
                       </p>
                     </div>
+                    {chat.DateTime && (
+                      <span className="text-xs text-gray-300 flex-shrink-0">{formatTime(chat.DateTime)}</span>
+                    )}
                   </button>
                 </li>
               );
@@ -268,138 +289,155 @@ export default function ConversationsPage() {
       </div>
 
       {/* ── Right: conversation ── */}
-      {selectedChat ? (
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-100 bg-white flex items-center gap-3 flex-shrink-0">
-            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm flex-shrink-0">
-              {initials(getPartner(selectedChat).name)}
+      <div
+        className={`
+          flex-col min-w-0
+          ${showConvo ? 'flex' : 'hidden'}
+          md:flex flex-1
+        `}
+      >
+        {selectedChat ? (
+          <>
+            {/* Header */}
+            <div className="pl-16 pr-4 lg:pl-4 py-3 border-b border-gray-100 bg-white flex items-center gap-3 flex-shrink-0">
+              {/* Back button — visible on mobile only */}
+              <button
+                onClick={handleBack}
+                className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 transition flex-shrink-0"
+                aria-label="Back to conversations"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm flex-shrink-0">
+                {initials(getPartner(selectedChat).name)}
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-sm text-gray-800 truncate">{getPartner(selectedChat).name || 'User'}</p>
+                <p className="text-xs text-gray-400">Support conversation</p>
+              </div>
             </div>
-            <div>
-              <p className="font-semibold text-sm text-gray-800">{getPartner(selectedChat).name || 'User'}</p>
-              <p className="text-xs text-gray-400">Support conversation</p>
-            </div>
-          </div>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1">
-            {messages.length === 0 && (
-              <p className="text-center text-gray-300 text-sm mt-12">No messages yet. Say hello!</p>
-            )}
-            {messages.map((msg, i) => {
-              const isSupport = msg.sendby === SUPPORT_UID;
-              const prev = i > 0 ? messages[i - 1] : null;
-              const showDate = !prev || !sameDay(prev.time, msg.time);
-              return (
-                <div key={i}>
-                  {showDate && (
-                    <div className="flex items-center justify-center my-4">
-                      <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
-                        {formatDate(msg.time)}
-                      </span>
-                    </div>
-                  )}
-                  <div className={`flex ${isSupport ? 'justify-end' : 'justify-start'} mb-1`}>
-                    {msg.type === 'image' ? (
-                      <div
-                        className={`max-w-xs cursor-pointer rounded-2xl overflow-hidden shadow-sm ${isSupport ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
-                        onClick={() => setLightboxUrl(msg.message)}
-                      >
-                        <img
-                          src={msg.message}
-                          alt="Sent image"
-                          className="block max-h-64 object-cover w-full"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        />
-                        <div className={`px-2 py-1 text-right text-xs ${isSupport ? 'bg-blue-600 text-blue-200' : 'bg-white text-gray-400'}`}>
-                          {formatTime(msg.time)}
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        className={`max-w-xs lg:max-w-md px-4 py-2.5 text-sm break-words ${
-                          isSupport
-                            ? 'bg-blue-600 text-white rounded-2xl rounded-br-sm'
-                            : 'bg-white text-gray-800 rounded-2xl rounded-bl-sm shadow-sm border border-gray-100'
-                        }`}
-                      >
-                        <p className="leading-relaxed">{msg.message}</p>
-                        <p className={`text-xs mt-1 text-right ${isSupport ? 'text-blue-200' : 'text-gray-400'}`}>
-                          {formatTime(msg.time)}
-                        </p>
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+              {messages.length === 0 && (
+                <p className="text-center text-gray-300 text-sm mt-12">No messages yet. Say hello!</p>
+              )}
+              {messages.map((msg, i) => {
+                const isSupport = msg.sendby === SUPPORT_UID;
+                const prev = i > 0 ? messages[i - 1] : null;
+                const showDate = !prev || !sameDay(prev.time, msg.time);
+                return (
+                  <div key={i}>
+                    {showDate && (
+                      <div className="flex items-center justify-center my-4">
+                        <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">
+                          {formatDate(msg.time)}
+                        </span>
                       </div>
                     )}
+                    <div className={`flex ${isSupport ? 'justify-end' : 'justify-start'} mb-1`}>
+                      {msg.type === 'image' ? (
+                        <div
+                          className={`max-w-[75vw] md:max-w-xs cursor-pointer rounded-2xl overflow-hidden shadow-sm ${isSupport ? 'rounded-br-sm' : 'rounded-bl-sm'}`}
+                          onClick={() => setLightboxUrl(msg.message)}
+                        >
+                          <img
+                            src={msg.message}
+                            alt="Sent image"
+                            className="block max-h-64 object-cover w-full"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                          <div className={`px-2 py-1 text-right text-xs ${isSupport ? 'bg-blue-600 text-blue-200' : 'bg-white text-gray-400'}`}>
+                            {formatTime(msg.time)}
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className={`max-w-[75vw] md:max-w-md px-4 py-2.5 text-sm break-words ${
+                            isSupport
+                              ? 'bg-blue-600 text-white rounded-2xl rounded-br-sm'
+                              : 'bg-white text-gray-800 rounded-2xl rounded-bl-sm shadow-sm border border-gray-100'
+                          }`}
+                        >
+                          <p className="leading-relaxed">{msg.message}</p>
+                          <p className={`text-xs mt-1 text-right ${isSupport ? 'text-blue-200' : 'text-gray-400'}`}>
+                            {formatTime(msg.time)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-            <div ref={bottomRef} />
-          </div>
-
-          {/* Upload progress */}
-          {uploadingImage && (
-            <div className="px-6 py-2 bg-white border-t border-gray-100 flex items-center gap-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 flex-shrink-0" />
-              <span className="text-xs text-gray-400">Uploading image…</span>
+                );
+              })}
+              <div ref={bottomRef} />
             </div>
-          )}
 
-          {/* Input */}
-          <div className="px-4 py-3 bg-white border-t border-gray-100 flex items-end gap-2 flex-shrink-0">
-            {/* Hidden file input */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            {/* Attach button */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingImage}
-              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600 transition disabled:opacity-40"
-              title="Send image"
-            >
-              <Paperclip size={16} />
-            </button>
-
-            {/* Textarea */}
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              onChange={(e) => { setDraft(e.target.value); e.target.style.height = 'auto'; e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`; }}
-              onKeyDown={handleKeyDown}
-              placeholder="Type a message…"
-              rows={1}
-              className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-transparent leading-relaxed"
-              style={{ minHeight: '40px', maxHeight: '120px' }}
-            />
-
-            {/* Send button */}
-            {sending ? (
-              <div className="w-9 h-9 flex-shrink-0 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
+            {/* Upload progress */}
+            {uploadingImage && (
+              <div className="px-4 py-2 bg-white border-t border-gray-100 flex items-center gap-2 flex-shrink-0">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 flex-shrink-0" />
+                <span className="text-xs text-gray-400">Uploading image…</span>
               </div>
-            ) : (
-              <button
-                onClick={sendMessage}
-                disabled={!draft.trim() || sending}
-                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-30 transition"
-              >
-                <Send size={15} />
-              </button>
             )}
+
+            {/* Input */}
+            <div className="px-3 py-3 bg-white border-t border-gray-100 flex items-end gap-2 flex-shrink-0">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingImage}
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600 transition disabled:opacity-40"
+                title="Send image"
+              >
+                <Paperclip size={16} />
+              </button>
+
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder="Type a message…"
+                rows={1}
+                className="flex-1 resize-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-transparent leading-relaxed"
+                style={{ minHeight: '40px', maxHeight: '120px' }}
+              />
+
+              {sending ? (
+                <div className="w-9 h-9 flex-shrink-0 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
+                </div>
+              ) : (
+                <button
+                  onClick={sendMessage}
+                  disabled={!draft.trim() || sending}
+                  className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-30 transition"
+                >
+                  <Send size={15} />
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          /* Desktop empty state — only visible on md+ when no chat selected */
+          <div className="flex-1 hidden md:flex items-center justify-center text-gray-300">
+            <div className="text-center space-y-3">
+              <MessageSquare size={48} className="mx-auto" />
+              <p className="text-sm">Select a conversation or start a new one</p>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="flex-1 flex items-center justify-center text-gray-300">
-          <div className="text-center space-y-3">
-            <MessageSquare size={48} className="mx-auto" />
-            <p className="text-sm">Select a conversation or start a new one</p>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ── New conversation modal ── */}
       {showNewChat && (
@@ -407,7 +445,10 @@ export default function ConversationsPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-[80vh]">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-800">Start a Conversation</h3>
-              <button onClick={() => { setShowNewChat(false); setUserSearch(''); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition">
+              <button
+                onClick={() => { setShowNewChat(false); setUserSearch(''); }}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+              >
                 <X size={16} />
               </button>
             </div>
@@ -435,7 +476,11 @@ export default function ConversationsPage() {
                   const name = (user['1_name'] as string) || (user['name'] as string) || 'Unknown';
                   const sub = (user['3_phoneNumber'] as string) || (user['2_email'] as string) || (user['email'] as string) || '';
                   return (
-                    <button key={user.id} onClick={() => startConversation(user)} className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-blue-50 flex items-center gap-3 transition">
+                    <button
+                      key={user.id}
+                      onClick={() => startConversation(user)}
+                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-blue-50 flex items-center gap-3 transition"
+                    >
                       <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm font-semibold flex-shrink-0">
                         {initials(name)}
                       </div>
@@ -458,7 +503,10 @@ export default function ConversationsPage() {
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => setLightboxUrl(null)}
         >
-          <button className="absolute top-4 right-4 text-white hover:text-gray-300 transition" onClick={() => setLightboxUrl(null)}>
+          <button
+            className="absolute top-4 right-4 text-white hover:text-gray-300 transition"
+            onClick={() => setLightboxUrl(null)}
+          >
             <X size={28} />
           </button>
           <img
