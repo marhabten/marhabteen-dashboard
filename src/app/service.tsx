@@ -366,6 +366,23 @@ export async function deleteExternalBooking(bookingId: string, propertyId: strin
     }
 }
 
+// Unbook specific dates on a property (fix glitched booked dates)
+export async function unbookDates(propertyId: string, dates: any[], datesToUnbook: string[]) {
+    try {
+        const dateSet = new Set(datesToUnbook);
+        const updated = dates.map((d: any) =>
+            dateSet.has(d.date)
+                ? { ...d, isBooked: false, isAvailable: true, bookingId: null }
+                : d
+        );
+        await updateDoc(doc(db, 'properties', propertyId), { dates: updated });
+        return updated;
+    } catch (error) {
+        console.error('Error unbooking dates:', error);
+        return null;
+    }
+}
+
 // Mark all non-booked available dates as unavailable on a property
 export async function blockAllAvailableDates(propertyId: string, dates: any[]) {
     try {

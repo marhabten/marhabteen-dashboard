@@ -2,7 +2,7 @@
 
 import { fetchAllHostUids } from "@/app/service";
 import { db } from "@/lib/firebase";
-import { addDoc, collection, doc, getDocs, setDoc, Timestamp } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, setDoc, Timestamp } from "firebase/firestore";
 import { Bell, MessageSquare, Send, Users, X } from "lucide-react";
 import { useState } from "react";
 
@@ -80,11 +80,21 @@ export default function CommunicationPage() {
       try {
         const chatId = `${uid}_support`;
 
-        // Upsert chat document
+        // Fetch user's real name
+        const userSnap = await getDoc(doc(db, "users", uid));
+        const userData = userSnap.exists() ? userSnap.data() : {};
+        const userName =
+          (userData["1_name"] as string) ||
+          (userData["name"] as string) ||
+          "User";
+
+        // Upsert chat document — only set user1.name if creating new chat
+        // (merge:true will not overwrite existing name if chat already exists,
+        //  but we explicitly set it so new chats get the real name)
         await setDoc(
           doc(db, "Chats", chatId),
           {
-            user1: { uid, name: "User", image: "", badges: 1 },
+            user1: { uid, name: userName, image: "", badges: 1 },
             user2: { uid: SUPPORT_UID, name: "Marhabten Support", image: "", badges: 0 },
             lastMessage: msgBody.trim(),
             DateTime: Timestamp.now(),

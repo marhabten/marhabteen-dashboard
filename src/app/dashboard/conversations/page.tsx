@@ -5,6 +5,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -89,6 +90,7 @@ export default function ConversationsPage() {
   const [userSearch, setUserSearch] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [resolvedNames, setResolvedNames] = useState<Record<string, string>>({});
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +107,36 @@ export default function ConversationsPage() {
     });
     return () => unsub();
   }, []);
+
+  // Resolve "User" placeholder names by looking up actual Firestore user docs
+  useEffect(() => {
+    const unresolved = chats
+      .map((c) => getPartner(c))
+      .filter((p) => (!p.name || p.name === 'User') && !resolvedNames[p.uid]);
+    if (unresolved.length === 0) return;
+
+    Promise.all(
+      unresolved.map(async (p) => {
+        try {
+          const snap = await getDoc(doc(db, 'users', p.uid));
+          if (snap.exists()) {
+            const d = snap.data();
+            const name = (d['1_name'] as string) || (d['name'] as string) || '';
+            if (name) return { uid: p.uid, name };
+          }
+        } catch { /* ignore */ }
+        return null;
+      })
+    ).then((results) => {
+      const additions: Record<string, string> = {};
+      for (const r of results) {
+        if (r) additions[r.uid] = r.name;
+      }
+      if (Object.keys(additions).length > 0) {
+        setResolvedNames((prev) => ({ ...prev, ...additions }));
+      }
+    });
+  }, [chats]);
 
   // Real-time messages
   useEffect(() => {
@@ -123,6 +155,9 @@ export default function ConversationsPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const displayName = (partner: ChatUser) =>
+    resolvedNames[partner.uid] || partner.name || 'Unknown';
 
   const sendMessage = async () => {
     if (!draft.trim() || !selectedChat || sending) return;
@@ -267,10 +302,10 @@ export default function ConversationsPage() {
                     style={{ width: 'calc(100% - 8px)' }}
                   >
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                      {initials(partner.name)}
+                      {initials(displayName(partner))}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-gray-800 truncate">{partner.name || 'Unknown'}</p>
+                      <p className="font-medium text-sm text-gray-800 truncate">{displayName(partner)}</p>
                       <p className="text-xs text-gray-400 truncate mt-0.5">
                         {chat.lastMessage === '📷 Photo'
                           ? <span className="flex items-center gap-1"><ImageIcon size={10} /> Photo</span>
@@ -309,10 +344,10 @@ export default function ConversationsPage() {
                 <ArrowLeft size={20} />
               </button>
               <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm flex-shrink-0">
-                {initials(getPartner(selectedChat).name)}
+                {initials(displayName(getPartner(selectedChat)))}
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-sm text-gray-800 truncate">{getPartner(selectedChat).name || 'User'}</p>
+                <p className="font-semibold text-sm text-gray-800 truncate">{displayName(getPartner(selectedChat))}</p>
                 <p className="text-xs text-gray-400">Support conversation</p>
               </div>
             </div>

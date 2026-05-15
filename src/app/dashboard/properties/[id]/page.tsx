@@ -7,11 +7,14 @@ import {
   fetchExternalBookings,
   fetchPropertyById,
   toggleFeatured,
+  unbookDates,
   updatePropertyDescription,
   updatePropertyDetails,
   updatePropertyTitle,
 } from "@/app/service";
-import { Ban, CalendarX, Pencil, Save, Star, Trash2, X } from "lucide-react";
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { Ban, CalendarX, CheckSquare, Pencil, Save, Square, Star, Trash2, Unlock, User, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -61,6 +64,17 @@ interface Property {
   cancelationPolicy?: string;
   isFeatured?: boolean;
   dates?: DateEntry[];
+  userPropertyId?: string;
+  status?: string;
+}
+
+interface HostProfile {
+  uid: string;
+  name: string;
+  phone: string;
+  email: string;
+  wallet?: number;
+  propertiesCount?: number;
 }
 
 // ── Editable form state mirrors the fields the admin can change ──
@@ -224,6 +238,11 @@ export default function PropertyDetailsPage() {
   const [externalBookings, setExternalBookings] = useState<any[]>([]);
   const [deletingBooking, setDeletingBooking] = useState<string | null>(null);
   const [blockingDates, setBlockingDates] = useState(false);
+  const [selectedBookedDates, setSelectedBookedDates] = useState<Set<string>>(new Set());
+  const [unbooking, setUnbooking] = useState(false);
+  const [hostProfile, setHostProfile] = useState<HostProfile | null>(null);
+  const [loadingHost, setLoadingHost] = useState(false);
+  const [showHostModal, setShowHostModal] = useState(false);
 
   useEffect(() => {
     async function loadProperty() {
@@ -368,6 +387,49 @@ export default function PropertyDetailsPage() {
     setBlockingDates(false);
   };
 
+  const toggleBookedDate = (date: string) =>
+    setSelectedBookedDates((prev) => {
+      const next = new Set(prev);
+      next.has(date) ? next.delete(date) : next.add(date);
+      return next;
+    });
+
+  const handleUnbookSelected = async () => {
+    if (selectedBookedDates.size === 0) return;
+    if (!confirm(`Mark ${selectedBookedDates.size} date(s) as available? This will clear their bookingId and mark them unbooked.`)) return;
+    setUnbooking(true);
+    const updated = await unbookDates(property.id, property.dates ?? [], Array.from(selectedBookedDates));
+    if (updated) {
+      setProperty((prev) => ({ ...prev!, dates: updated as DateEntry[] }));
+      setSelectedBookedDates(new Set());
+    }
+    setUnbooking(false);
+  };
+
+  const handleViewHost = async () => {
+    const hostId = property.userPropertyId;
+    if (!hostId) return;
+    if (hostProfile) { setShowHostModal(true); return; }
+    setLoadingHost(true);
+    setShowHostModal(true);
+    try {
+      const snap = await getDoc(doc(db, "users", hostId));
+      if (snap.exists()) {
+        const d = snap.data();
+        setHostProfile({
+          uid: snap.id,
+          name: (d["1_name"] as string) || (d["name"] as string) || "Unknown",
+          phone: (d["3_phoneNumber"] as string) || "",
+          email: (d["2_email"] as string) || (d["email"] as string) || "",
+          wallet: d["wallet"] as number | undefined,
+          propertiesCount: (d["Properties"] as string[] | undefined)?.length,
+        });
+      }
+    } finally {
+      setLoadingHost(false);
+    }
+  };
+
   const set = <K extends keyof DetailsForm>(key: K, value: DetailsForm[K]) =>
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
 
@@ -467,8 +529,21 @@ export default function PropertyDetailsPage() {
 
       {/* Property Details — view or edit */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-gray-700">Property Details</h2>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-semibold text-gray-700">Property Details</h2>
+            {(property as any).status && (
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                (property as any).status === "approved"
+                  ? "bg-green-100 text-green-700"
+                  : (property as any).status === "pending"
+                  ? "bg-orange-100 text-orange-700"
+                  : "bg-red-100 text-red-700"
+              }`}>
+                {(property as any).status}
+              </span>
+            )}
+          </div>
           {!editingDetails ? (
             <button
               onClick={() => setEditingDetails(true)}
@@ -619,6 +694,21 @@ export default function PropertyDetailsPage() {
             {property.reviewData && (
               <InfoRow label="Rating" value={`${(property.reviewData.rating as number) ?? 0} / 5`} />
             )}
+            {property.userPropertyId && (
+              <div className="flex items-start gap-2 py-2.5 border-b border-gray-100 last:border-0">
+                <span className="text-sm font-medium text-gray-400 w-44 flex-shrink-0">Host</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm text-gray-500 font-mono truncate">{property.userPropertyId.slice(0, 16)}…</span>
+                  <button
+                    onClick={handleViewHost}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 text-xs font-medium transition flex-shrink-0"
+                  >
+                    <User size={12} />
+                    View Host Info
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -744,6 +834,110 @@ export default function PropertyDetailsPage() {
         );
       })()}
 
+      {/* Booked Dates — select & unbook glitched entries */}
+      {(() => {
+        const parseDMY = (s: string) => {
+          const [d, m, y] = s.split("/").map(Number);
+          return new Date(y, m - 1, d);
+        };
+
+        const allDates = property.dates ?? [];
+        const bookedDates = allDates
+          .filter((d) => d.isBooked)
+          .sort((a, b) => parseDMY(a.date).getTime() - parseDMY(b.date).getTime());
+
+        if (bookedDates.length === 0) return null;
+
+        // Group by month
+        const byMonth: Record<string, DateEntry[]> = {};
+        for (const d of bookedDates) {
+          const key = parseDMY(d.date).toLocaleString("en", { month: "long", year: "numeric" });
+          if (!byMonth[key]) byMonth[key] = [];
+          byMonth[key].push(d);
+        }
+
+        const allSelected = bookedDates.every((d) => selectedBookedDates.has(d.date));
+
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-amber-100 p-6">
+            <div className="flex items-center justify-between mb-1 flex-wrap gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-gray-700 flex items-center gap-2">
+                  Booked Dates
+                  <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                    {bookedDates.length}
+                  </span>
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Select glitched dates and mark them as available to fix double-booking issues.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() =>
+                    setSelectedBookedDates(
+                      allSelected ? new Set() : new Set(bookedDates.map((d) => d.date))
+                    )
+                  }
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-medium transition"
+                >
+                  {allSelected ? <CheckSquare size={13} /> : <Square size={13} />}
+                  {allSelected ? "Deselect All" : "Select All"}
+                </button>
+                <button
+                  onClick={handleUnbookSelected}
+                  disabled={unbooking || selectedBookedDates.size === 0}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 text-xs font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {unbooking ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Unlock size={13} />
+                  )}
+                  Unbook {selectedBookedDates.size > 0 ? `(${selectedBookedDates.size})` : "Selected"}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 mt-4">
+              {Object.entries(byMonth).map(([month, entries]) => (
+                <div key={month}>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{month}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {entries.map((d) => {
+                      const selected = selectedBookedDates.has(d.date);
+                      return (
+                        <button
+                          key={d.date}
+                          onClick={() => toggleBookedDate(d.date)}
+                          title={d.bookingId ? `Booking: ${d.bookingId}` : "No bookingId"}
+                          className={`inline-flex flex-col items-center rounded-lg px-3 py-1.5 text-xs border transition ${
+                            selected
+                              ? "bg-amber-500 border-amber-500 text-white"
+                              : "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100"
+                          }`}
+                        >
+                          <span className="font-medium">{d.date.slice(0, 5)}</span>
+                          {d.bookingId ? (
+                            <span className={`mt-0.5 font-mono text-[10px] truncate max-w-[64px] ${selected ? "text-amber-100" : "text-amber-500"}`}>
+                              {d.bookingId.slice(0, 8)}…
+                            </span>
+                          ) : (
+                            <span className={`mt-0.5 text-[10px] ${selected ? "text-amber-100" : "text-red-400"}`}>
+                              no ID ⚠
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* External Bookings */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -807,6 +1001,79 @@ export default function PropertyDetailsPage() {
       >
         Delete Property
       </button>
+
+      {/* Host Info Modal */}
+      {showHostModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                <User size={16} className="text-blue-600" />
+                Host Profile
+              </h3>
+              <button
+                onClick={() => setShowHostModal(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              {loadingHost ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500" />
+                </div>
+              ) : hostProfile ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg flex-shrink-0">
+                      {(hostProfile.name || "U").charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-800">{hostProfile.name}</p>
+                      {hostProfile.propertiesCount !== undefined && (
+                        <p className="text-xs text-gray-400">{hostProfile.propertiesCount} propert{hostProfile.propertiesCount === 1 ? "y" : "ies"}</p>
+                      )}
+                    </div>
+                  </div>
+                  {hostProfile.phone && (
+                    <div className="flex items-start gap-2 py-2 border-b border-gray-50">
+                      <span className="text-xs font-medium text-gray-400 w-20 flex-shrink-0 pt-0.5">Phone</span>
+                      <a href={`tel:${hostProfile.phone}`} className="text-sm text-blue-600 hover:underline">{hostProfile.phone}</a>
+                    </div>
+                  )}
+                  {hostProfile.email && (
+                    <div className="flex items-start gap-2 py-2 border-b border-gray-50">
+                      <span className="text-xs font-medium text-gray-400 w-20 flex-shrink-0 pt-0.5">Email</span>
+                      <a href={`mailto:${hostProfile.email}`} className="text-sm text-blue-600 hover:underline break-all">{hostProfile.email}</a>
+                    </div>
+                  )}
+                  {hostProfile.wallet !== undefined && (
+                    <div className="flex items-start gap-2 py-2 border-b border-gray-50">
+                      <span className="text-xs font-medium text-gray-400 w-20 flex-shrink-0 pt-0.5">Wallet</span>
+                      <span className="text-sm text-gray-800">{hostProfile.wallet} LYD</span>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-2 py-2">
+                    <span className="text-xs font-medium text-gray-400 w-20 flex-shrink-0 pt-0.5">UID</span>
+                    <span className="text-xs text-gray-400 font-mono break-all">{hostProfile.uid}</span>
+                  </div>
+                  <a
+                    href={`/dashboard/users?search=${encodeURIComponent(hostProfile.uid)}`}
+                    className="mt-2 flex items-center justify-center gap-2 w-full bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 transition"
+                  >
+                    <User size={14} />
+                    View Full Profile
+                  </a>
+                </div>
+              ) : (
+                <p className="text-center text-gray-400 text-sm py-6">Host profile not found.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

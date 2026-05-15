@@ -45,12 +45,28 @@ async function sendStatusEmail(property: any, status: "approved" | "rejected") {
   }
 }
 
+type SortKey = "newest" | "oldest" | "az" | "za";
+
+function sortProperties(list: any[], sort: SortKey) {
+    return [...list].sort((a, b) => {
+        if (sort === "newest" || sort === "oldest") {
+            const ta = a.createdAt?.toMillis?.() ?? 0;
+            const tb = b.createdAt?.toMillis?.() ?? 0;
+            return sort === "newest" ? tb - ta : ta - tb;
+        }
+        const na = (a.locationTitle || "").toLowerCase();
+        const nb = (b.locationTitle || "").toLowerCase();
+        return sort === "az" ? na.localeCompare(nb) : nb.localeCompare(na);
+    });
+}
+
 export default function PropertiesPage() {
     const [properties, setProperties] = useState<any[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [loading, setLoading] = useState(true);
     const [view, setView] = useState<"grid" | "map">("grid");
     const [tab, setTab] = useState<Tab>("all");
+    const [sort, setSort] = useState<SortKey>("newest");
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [scriptRunning, setScriptRunning] = useState(false);
     const [scriptResult, setScriptResult] = useState<string | null>(null);
@@ -65,21 +81,24 @@ export default function PropertiesPage() {
         loadProperties();
     }, []);
 
-    const filtered = properties
-        .filter((p) => {
-            if (tab === "pending") return p.status === "pending";
-            if (tab === "approved") return p.status === "approved";
-            if (tab === "rejected") return p.status === "rejected";
-            return true;
-        })
-        .filter((p) => {
-            if (!searchQuery.trim()) return true;
-            const q = searchQuery.toLowerCase();
-            return (
-                p.locationTitle?.toLowerCase().includes(q) ||
-                p.locationDescription?.toLowerCase().includes(q)
-            );
-        });
+    const filtered = sortProperties(
+        properties
+            .filter((p) => {
+                if (tab === "pending") return p.status === "pending";
+                if (tab === "approved") return p.status === "approved";
+                if (tab === "rejected") return p.status === "rejected";
+                return true;
+            })
+            .filter((p) => {
+                if (!searchQuery.trim()) return true;
+                const q = searchQuery.toLowerCase();
+                return (
+                    p.locationTitle?.toLowerCase().includes(q) ||
+                    p.locationDescription?.toLowerCase().includes(q)
+                );
+            }),
+        sort
+    );
 
     const pendingCount = properties.filter((p) => p.status === "pending").length;
 
@@ -183,18 +202,30 @@ export default function PropertiesPage() {
                 ))}
             </div>
 
-            {/* SEARCH */}
-            <div className="mb-4 relative w-full md:w-1/2">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                    <Search size={18} />
+            {/* SEARCH + SORT */}
+            <div className="mb-4 flex flex-wrap gap-3 items-center">
+                <div className="relative flex-1 min-w-48">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                        <Search size={18} />
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search by title or location..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+                    />
                 </div>
-                <input
-                    type="text"
-                    placeholder="Search by title or location..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
+                <select
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value as SortKey)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="az">A → Z</option>
+                    <option value="za">Z → A</option>
+                </select>
             </div>
 
             {/* MAP VIEW */}
