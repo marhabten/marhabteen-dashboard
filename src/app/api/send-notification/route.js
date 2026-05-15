@@ -26,26 +26,17 @@ export async function POST(req) {
 
     const userData = userDoc.data();
     const fcmToken = userData?.['13_fcmToken'];
-    const notificationEnabled = userData?.['14_notification'];
 
     console.log(`Fetched user data for ${recipientId}:`, {
       hasToken: !!fcmToken,
-      notificationEnabled,
     });
 
-    // Check if user has notifications enabled
-    if (!notificationEnabled) {
-      return NextResponse.json(
-        { success: false, message: 'User has notifications disabled' },
-        { status: 200 }
-      );
-    }
-
-    // Check if FCM token exists
+    // Check if FCM token exists — OS-level notification settings are handled by FCM itself
     if (!fcmToken) {
+      console.warn(`[FCM] No token for user ${recipientId} — skipping`);
       return NextResponse.json(
-        { error: 'User has no FCM token' },
-        { status: 400 }
+        { success: false, message: 'User has no FCM token' },
+        { status: 200 }
       );
     }
 

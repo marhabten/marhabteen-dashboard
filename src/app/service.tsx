@@ -1,6 +1,6 @@
 import { auth, db } from "@/lib/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, getDocs, getDoc, limit, orderBy, query, setDoc, Timestamp, updateDoc } from "firebase/firestore";
+import { addDoc, arrayRemove, arrayUnion, collection, deleteDoc, doc, getDocs, getDoc, limit, orderBy, query, startAfter, setDoc, Timestamp, updateDoc, where } from "firebase/firestore";
 
 // Fetch properties from Firestore
 export async function fetchProperties() {
@@ -10,6 +10,17 @@ export async function fetchProperties() {
         id: doc.id, 
         ...doc.data(),
     }));
+}
+
+// Update property approval status
+export async function updatePropertyStatus(propertyId: string, status: 'approved' | 'rejected') {
+    try {
+        await updateDoc(doc(db, 'properties', propertyId), { status });
+        return true;
+    } catch (error) {
+        console.error('Error updating property status:', error);
+        return false;
+    }
 }
 
 // Delete a property by ID
@@ -23,21 +34,32 @@ export async function deletePropertyById(propertyId: string) {
     }
 }
 
-// Fetch users from Firestore
-export async function fetchUsers() {
-    const usersRef = collection(db, "users");
-    const querySnapshot = await getDocs(usersRef);
-    return querySnapshot.docs.map((doc) => ({
-        id: doc.id, 
-        ...doc.data(),
-    }));
+// Fetch users via server-side Admin SDK (bypasses Firestore security rules,
+// returns all users including phone-only accounts with no Firebase Auth entry)
+export async function fetchUsers(lastDocId?: string | null) {
+    try {
+        const url = lastDocId
+            ? `/api/users/list?startAfter=${encodeURIComponent(lastDocId)}`
+            : `/api/users/list`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`fetchUsers failed: ${res.status}`);
+        const { users, lastDocId: newLastDocId, hasMore } = await res.json();
+        return { users, lastDoc: newLastDocId, hasMore };
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        return { users: [], lastDoc: null, hasMore: false };
+    }
 }
 
-// Delete a user by ID
+// Delete a user by ID (Firestore + Firebase Auth via server-side Admin SDK)
 export async function deleteUserById(userId: string) {
     try {
-        await deleteDoc(doc(db, "users", userId));
-        return true;
+        const res = await fetch('/api/users/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId }),
+        });
+        return res.ok;
     } catch (error) {
         console.error("Error deleting user:", error);
         return false;
@@ -303,6 +325,93 @@ export async function fetchBookings() {
     }
 }
 
+// Fetch external bookings for a specific property (guestId === 'external')
+export async function fetchExternalBookings(propertyId: string) {
+    try {
+        const q = query(
+            collection(db, "bookings"),
+            where("propertyId", "==", propertyId),
+            where("guestId", "==", "external")
+        );
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+    } catch (error) {
+        console.error("Error fetching external bookings:", error);
+        return [];
+    }
+}
+
+// Delete an external booking and free the dates it blocked on the property
+export async function deleteExternalBooking(bookingId: string, propertyId: string) {
+    try {
+        // Free the blocked dates — clear entries that reference this bookingId
+        const propertyRef = doc(db, "properties", propertyId);
+        const propertySnap = await getDoc(propertyRef);
+        if (propertySnap.exists()) {
+            const dates: any[] = propertySnap.data().dates ?? [];
+            const freed = dates.map((entry: any) => {
+                if (entry.bookingId === bookingId) {
+                    return { ...entry, isBooked: false, isAvailable: true, bookingId: null };
+                }
+                return entry;
+            });
+            await updateDoc(propertyRef, { dates: freed });
+        }
+        // Delete the booking document
+        await deleteDoc(doc(db, "bookings", bookingId));
+        return true;
+    } catch (error) {
+        console.error("Error deleting external booking:", error);
+        return false;
+    }
+}
+
+// Mark all non-booked available dates as unavailable on a property
+export async function blockAllAvailableDates(propertyId: string, dates: any[]) {
+    try {
+        const updated = dates.map((d: any) => ({
+            ...d,
+            isAvailable: d.isBooked ? d.isAvailable : false,
+        }));
+        await updateDoc(doc(db, 'properties', propertyId), { dates: updated });
+        return updated;
+    } catch (error) {
+        console.error('Error blocking available dates:', error);
+        return null;
+    }
+}
+
+// Script: block all available (non-booked) dates across every property
+export async function blockAllPropertiesAvailableDates(): Promise<{ updated: number; skipped: number; errors: number }> {
+    try {
+        const snap = await getDocs(collection(db, 'properties'));
+        let updated = 0, skipped = 0, errors = 0;
+
+        // Process in parallel batches of 10 to avoid overwhelming Firestore
+        const docs = snap.docs;
+        for (let i = 0; i < docs.length; i += 10) {
+            const batch = docs.slice(i, i + 10).map(async (d) => {
+                const dates: any[] = d.data().dates ?? [];
+                const hasAvailable = dates.some((dt: any) => dt.isAvailable && !dt.isBooked);
+                if (!hasAvailable) { skipped++; return; }
+                const updatedDates = dates.map((dt: any) => ({
+                    ...dt,
+                    isAvailable: dt.isBooked ? dt.isAvailable : false,
+                }));
+                try {
+                    await updateDoc(doc(db, 'properties', d.id), { dates: updatedDates });
+                    updated++;
+                } catch { errors++; }
+            });
+            await Promise.all(batch);
+        }
+        return { updated, skipped, errors };
+    } catch (error) {
+        console.error('blockAllPropertiesAvailableDates error:', error);
+        return { updated: 0, skipped: 0, errors: 1 };
+    }
+}
+
 // Delete a booking by ID
 export async function deleteBookingById(bookingId: string) {
     try {
@@ -380,6 +489,22 @@ export async function createManualBooking(booking: {
     console.error('Error creating manual booking:', error);
     return false;
   }
+}
+
+// Fetch UIDs of all users who own at least one property
+export async function fetchAllHostUids(): Promise<string[]> {
+    try {
+        const snap = await getDocs(collection(db, 'properties'));
+        const uids = new Set<string>();
+        snap.docs.forEach(d => {
+            const uid = d.data().userPropertyId;
+            if (uid) uids.add(uid as string);
+        });
+        return Array.from(uids);
+    } catch (error) {
+        console.error('fetchAllHostUids error:', error);
+        return [];
+    }
 }
 
 export async function updateBooking(

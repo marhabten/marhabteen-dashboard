@@ -116,7 +116,7 @@ export default function ManualBookingModal({ properties, onClose, onCreated }: P
   useEffect(() => {
     if (step === 2 && allUsers.length === 0) {
       setLoadingUsers(true);
-      fetchUsers().then((u) => { setAllUsers(u as AnyUser[]); setLoadingUsers(false); });
+      fetchUsers().then(({ users: u }) => { setAllUsers(u as AnyUser[]); setLoadingUsers(false); });
     }
   }, [step]);
 

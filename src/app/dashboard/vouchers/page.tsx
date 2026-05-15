@@ -1,7 +1,7 @@
 "use client";
 import { addVouchers, deleteVoucher, fetchVouchers, updateVoucherExportStatus } from "@/app/service";
 import { saveAs } from "file-saver";
-import { PlusCircle, Trash2 } from "lucide-react";
+import { Download, PlusCircle, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface Voucher {
@@ -11,16 +11,21 @@ interface Voucher {
     isRedeemed: boolean;
     redemptionDate?: string | { seconds: number };
     value: number;
-    exported: boolean; // Added exported property
+    exported: boolean;
 }
 
 const getFormattedDate = () => {
     const date = new Date();
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are zero-based
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
+    return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 };
+
+function Badge({ label, colorClass }: { label: string; colorClass: string }) {
+    return (
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+            {label}
+        </span>
+    );
+}
 
 export default function VouchersPage() {
     const [vouchers, setVouchers] = useState<Voucher[]>([]);
@@ -28,249 +33,220 @@ export default function VouchersPage() {
     const [showPopup, setShowPopup] = useState(false);
     const [selectedValue, setSelectedValue] = useState(50);
     const [quantity, setQuantity] = useState(1);
-    const [selectedVouchers, setSelectedVouchers] = useState<string[]>([]); // Added state for selected vouchers
+    const [selectedVouchers, setSelectedVouchers] = useState<string[]>([]);
 
     useEffect(() => {
         async function loadVouchers() {
             const data = await fetchVouchers();
-            const formattedData = data.map((voucher: any) => ({
-                id: voucher.id,
-                code: voucher.code || "",
-                createdAt: voucher.createdAt || { seconds: 0 },
-                isRedeemed: voucher.isRedeemed || false,
-                redemptionDate: voucher.redemptionDate || null,
-                value: voucher.value || 0,
-                exported: voucher.exported || false, // Ensure exported property is included
+            const formatted = data.map((v: any) => ({
+                id: v.id,
+                code: v.code || "",
+                createdAt: v.createdAt || { seconds: 0 },
+                isRedeemed: v.isRedeemed || false,
+                redemptionDate: v.redemptionDate || null,
+                value: v.value || 0,
+                exported: v.exported || false,
             }));
-            setVouchers(formattedData.sort((a, b) => Number(a.exported) - Number(b.exported))); // Sort vouchers
+            setVouchers(formatted.sort((a, b) => Number(a.exported) - Number(b.exported)));
             setLoading(false);
         }
         loadVouchers();
     }, []);
 
-    const togglePopup = () => setShowPopup(!showPopup);
-
     const handleCreateVoucher = async (exportImmediately = false) => {
         const success = await addVouchers(selectedValue, quantity, exportImmediately);
         if (success) {
-            const updatedVouchers = await fetchVouchers() as [Voucher];
-            setVouchers(updatedVouchers.sort((a, b) => Number(a.exported) - Number(b.exported)));
-
-            // If exported immediately, download only the newly created vouchers
+            const updated = await fetchVouchers() as Voucher[];
+            setVouchers(updated.sort((a, b) => Number(a.exported) - Number(b.exported)));
             if (exportImmediately) {
-                const newVouchers = updatedVouchers.slice(-quantity); // Get last generated vouchers
-                let csvContent = "Code,Value,Status,Exported\n";
-                newVouchers.forEach(voucher => {
-                    csvContent += `${voucher.code},${voucher.value} LYD,${voucher.isRedeemed ? "Redeemed" : "Active"},Yes\n`;
-                });
-
-                const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-                saveAs(blob, `marhabteen-codes : ${getFormattedDate()}.csv`);
+                const newVouchers = updated.slice(-quantity);
+                let csv = "Code,Value,Status,Exported\n";
+                newVouchers.forEach(v => { csv += `${v.code},${v.value} LYD,${v.isRedeemed ? "Redeemed" : "Active"},Yes\n`; });
+                saveAs(new Blob([csv], { type: "text/csv;charset=utf-8;" }), `marhabteen-codes : ${getFormattedDate()}.csv`);
             }
         }
         setShowPopup(false);
     };
 
     const handleDeleteVoucher = async (id: string) => {
-        const confirmed = confirm("Are you sure you want to delete this voucher?");
-        if (confirmed) {
-            const success = await deleteVoucher(id);
-            if (success) {
-                setVouchers(prev => prev.filter(voucher => voucher.id !== id));
-            }
-        }
+        if (!confirm("Are you sure you want to delete this voucher?")) return;
+        const success = await deleteVoucher(id);
+        if (success) setVouchers(prev => prev.filter(v => v.id !== id));
     };
 
     const handleDownloadCSV = async (onlySelected = false) => {
-        const vouchersToExport = onlySelected ? vouchers.filter(v => selectedVouchers.includes(v.id)) : vouchers.filter(v => !v.exported); // Export only unexported vouchers
-
-        if (vouchersToExport.length === 0) {
-            alert("No unexported vouchers available for export.");
-            return;
-        }
-
-        let csvContent = "Code,Value,Status,Exported\n";
-        vouchersToExport.forEach(voucher => {
-            csvContent += `${voucher.code},${voucher.value} LYD,${voucher.isRedeemed ? "Redeemed" : "Active"},${voucher.exported ? "Yes" : "No"}\n`;
-        });
-
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        saveAs(blob, `marhabteen-codes : ${getFormattedDate()}.csv`);
-
-        // Update Firebase to mark exported vouchers and refetch data
-        const exportIds = vouchersToExport.map(v => v.id);
-        await updateVoucherExportStatus(exportIds);
-        
-        // Refetch vouchers and sort with non-exported first
-        const updatedVouchers = await fetchVouchers() as [Voucher];
-        setVouchers(updatedVouchers.sort((a, b) => Number(a.exported) - Number(b.exported)));
-
-        // Deselect all selected vouchers after exporting a selection
-        if (onlySelected) {
-            setSelectedVouchers([]);
-        }
+        const toExport = onlySelected
+            ? vouchers.filter(v => selectedVouchers.includes(v.id))
+            : vouchers.filter(v => !v.exported);
+        if (toExport.length === 0) { alert("No unexported vouchers available."); return; }
+        let csv = "Code,Value,Status,Exported\n";
+        toExport.forEach(v => { csv += `${v.code},${v.value} LYD,${v.isRedeemed ? "Redeemed" : "Active"},${v.exported ? "Yes" : "No"}\n`; });
+        saveAs(new Blob([csv], { type: "text/csv;charset=utf-8;" }), `marhabteen-codes : ${getFormattedDate()}.csv`);
+        await updateVoucherExportStatus(toExport.map(v => v.id));
+        const updated = await fetchVouchers() as Voucher[];
+        setVouchers(updated.sort((a, b) => Number(a.exported) - Number(b.exported)));
+        if (onlySelected) setSelectedVouchers([]);
     };
 
-    const toggleVoucherSelection = (id: string) => {
-        setSelectedVouchers(prev =>
-            prev.includes(id) ? prev.filter(vId => vId !== id) : [...prev, id]
+    const toggleSelect = (id: string) =>
+        setSelectedVouchers(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+
+    const allExported = vouchers.length > 0 && vouchers.every(v => v.exported);
+
+    if (loading)
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+            </div>
         );
-    };
-
-    // Check if all vouchers are exported
-    const allVouchersExported = vouchers.length > 0 && vouchers.every(v => v.exported);
 
     return (
-        <div className="p-0 md:p-6 mt-12 md:mt-0">
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-4">
-                <h1 className="text-xl md:text-3xl font-bold mb-3 sm:mb-0">Vouchers</h1>
-                <div className="flex flex-col md:flex-row w-full  gap-2 justify-start sm:justify-end">
-                    <button
-                        onClick={togglePopup}
-                        className="bg-blue-600 text-white flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-blue-700 text-sm md:text-base"
-                    >
-                        <PlusCircle size={18} /> Create Voucher
-                    </button>
+        <div className="p-4 md:p-8 space-y-6 md:mt-0 mt-12">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+                <h1 className="text-2xl font-bold text-gray-900">Vouchers</h1>
+                <div className="flex items-center gap-2 flex-wrap">
                     <button
                         onClick={() => handleDownloadCSV(false)}
-                        className={`bg-gray-600 text-white flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 text-sm md:text-base ${allVouchersExported ? "opacity-50 cursor-not-allowed" : ""}`}
-                        disabled={allVouchersExported}
+                        disabled={allExported}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition disabled:opacity-40"
                     >
-                        📤 Export All
+                        <Download size={15} /> Export All
                     </button>
                     <button
                         onClick={() => handleDownloadCSV(true)}
-                        className={`bg-gray-600 text-white flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 text-sm md:text-base ${selectedVouchers.length === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
                         disabled={selectedVouchers.length === 0}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition disabled:opacity-40"
                     >
-                        📤 Export Selected
+                        <Download size={15} /> Export Selected ({selectedVouchers.length})
+                    </button>
+                    <button
+                        onClick={() => setShowPopup(true)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition"
+                    >
+                        <PlusCircle size={16} /> Create Voucher
                     </button>
                 </div>
             </div>
 
-            {loading ? (
-                <p className="text-center text-sm md:text-base">Loading vouchers...</p>
-            ) : (
-                <>
-                    {/* Mobile View: List Style */}
-                    <div className="md:hidden space-y-2">
-                        {vouchers.map((voucher) => (
-                            <div
-                                key={voucher.id}
-                                className={`bg-white shadow-md rounded-lg p-3 flex border-2 border-blue-100 justify-between items-center transition duration-500 ${selectedVouchers.includes(voucher.id) ? "bg-blue-300 border-2 border-blue-500" : ""}`}
-                                onClick={() => toggleVoucherSelection(voucher.id)}
-                            >
-                                <div>
-                                    <p className="text-sm font-semibold">{voucher.code} - <span className={`${voucher.exported ? "text-green-700" : "text-red-800"}`}> {voucher.exported ? "Exported" : "Awaiting for export"} </span></p>
-                                    <p className="text-xs text-gray-600">{voucher.value} LYD</p>
-                                    <p className={`text-xs font-semibold ${voucher.isRedeemed ? "text-red-500" : "text-green-500"}`}>
-                                        {voucher.isRedeemed ? "Redeemed" : "Active"}
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteVoucher(voucher.id);
-                                    }}
-                                    className="text-red-500 hover:text-red-700 transition"
+            {/* Desktop table */}
+            <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <table className="min-w-full text-sm">
+                    <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50 text-xs uppercase tracking-wide text-gray-400">
+                            <th className="px-5 py-3 text-left font-medium w-10">
+                                <input
+                                    type="checkbox"
+                                    className="rounded"
+                                    checked={selectedVouchers.length === vouchers.length && vouchers.length > 0}
+                                    onChange={() =>
+                                        setSelectedVouchers(
+                                            selectedVouchers.length === vouchers.length ? [] : vouchers.map(v => v.id)
+                                        )
+                                    }
+                                />
+                            </th>
+                            <th className="px-5 py-3 text-left font-medium">Code</th>
+                            <th className="px-5 py-3 text-left font-medium">Value</th>
+                            <th className="px-5 py-3 text-left font-medium">Status</th>
+                            <th className="px-5 py-3 text-left font-medium">Export</th>
+                            <th className="px-5 py-3" />
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                        {vouchers.length === 0 ? (
+                            <tr>
+                                <td colSpan={6} className="text-center text-gray-400 py-12 text-sm">No vouchers found.</td>
+                            </tr>
+                        ) : (
+                            vouchers.map((v) => (
+                                <tr
+                                    key={v.id}
+                                    className={`hover:bg-blue-50/40 transition cursor-pointer ${selectedVouchers.includes(v.id) ? "bg-blue-50" : ""}`}
+                                    onClick={() => toggleSelect(v.id)}
                                 >
-                                    <Trash2 size={20} />
+                                    <td className="px-5 py-3.5" onClick={e => e.stopPropagation()}>
+                                        <input type="checkbox" className="rounded" checked={selectedVouchers.includes(v.id)} onChange={() => toggleSelect(v.id)} />
+                                    </td>
+                                    <td className="px-5 py-3.5 font-mono font-semibold text-gray-800">{v.code}</td>
+                                    <td className="px-5 py-3.5 font-semibold text-blue-600">{v.value} LYD</td>
+                                    <td className="px-5 py-3.5">
+                                        <Badge
+                                            label={v.isRedeemed ? "Redeemed" : "Active"}
+                                            colorClass={v.isRedeemed ? "bg-red-100 text-red-600" : "bg-green-100 text-green-700"}
+                                        />
+                                    </td>
+                                    <td className="px-5 py-3.5">
+                                        <Badge
+                                            label={v.exported ? "Exported" : "Pending"}
+                                            colorClass={v.exported ? "bg-gray-100 text-gray-500" : "bg-amber-100 text-amber-700"}
+                                        />
+                                    </td>
+                                    <td className="px-5 py-3.5">
+                                        <button
+                                            onClick={e => { e.stopPropagation(); handleDeleteVoucher(v.id); }}
+                                            className="text-gray-300 hover:text-red-500 transition"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="md:hidden space-y-3">
+                {vouchers.map((v) => (
+                    <div
+                        key={v.id}
+                        onClick={() => toggleSelect(v.id)}
+                        className={`bg-white rounded-2xl border p-4 shadow-sm cursor-pointer transition space-y-2 ${selectedVouchers.includes(v.id) ? "border-blue-400 bg-blue-50" : "border-gray-100"}`}
+                    >
+                        <div className="flex items-start justify-between gap-2">
+                            <p className="font-mono font-semibold text-gray-800">{v.code}</p>
+                            <div className="flex items-center gap-2">
+                                <Badge label={v.isRedeemed ? "Redeemed" : "Active"} colorClass={v.isRedeemed ? "bg-red-100 text-red-600" : "bg-green-100 text-green-700"} />
+                                <button onClick={e => { e.stopPropagation(); handleDeleteVoucher(v.id); }} className="text-gray-300 hover:text-red-500 transition">
+                                    <Trash2 size={15} />
                                 </button>
                             </div>
-                        ))}
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <p className="text-sm font-bold text-blue-600">{v.value} LYD</p>
+                            <Badge label={v.exported ? "Exported" : "Pending"} colorClass={v.exported ? "bg-gray-100 text-gray-500" : "bg-amber-100 text-amber-700"} />
+                        </div>
                     </div>
+                ))}
+            </div>
 
-                    {/* Desktop View: Table Style */}
-                    <div className="hidden md:block bg-white shadow-md rounded-lg p-3 md:p-4">
-                        <table className="w-full">
-                            <thead>
-                                <tr className="text-left text-gray-700 uppercase text-xs md:text-sm border-b">
-                                    <th className="pb-2 md:pb-3">Select</th>
-                                    <th className="pb-2 md:pb-3">Code</th>
-                                    <th className="pb-2 md:pb-3">Value</th>
-                                    <th className="pb-2 md:pb-3">Status</th>
-                                    <th className="pb-2 md:pb-3">Exported</th>
-                                    <th className="pb-2 md:pb-3">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {vouchers.map((voucher, index) => (
-                                    <tr
-                                        key={voucher.id}
-                                        className={`border-b text-xs md:text-base ${
-                                            index % 2 === 0 ? "bg-gray-50" : "bg-white"
-                                        } hover:bg-gray-100 transition`}
-                                    >
-                                        <td className="py-2 md:py-3">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedVouchers.includes(voucher.id)}
-                                                onChange={() => toggleVoucherSelection(voucher.id)}
-                                            />
-                                        </td>
-                                        <td className="py-2 md:py-3">{voucher.code}</td>
-                                        <td className="py-2 md:py-3 font-semibold">{voucher.value} LYD</td>
-                                        <td className={`py-2 md:py-3 font-semibold ${voucher.isRedeemed ? "text-red-500" : "text-green-500"}`}>
-                                            {voucher.isRedeemed ? "Redeemed" : "Active"}
-                                        </td>
-                                        <td className="py-2 md:py-3">{voucher.exported ? "Yes" : "No"}</td>
-                                        <td className="py-2 md:py-3 text-center">
-                                            <button
-                                                onClick={() => handleDeleteVoucher(voucher.id)}
-                                                className="text-red-500 hover:text-red-700 transition"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </>
-            )}
-
-            {/* Create Voucher Popup */}
+            {/* Create Voucher Modal */}
             {showPopup && (
-                <div className="fixed inset-0 bg-black/10 flex justify-center items-center p-4">
-                    <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-xs sm:max-w-sm">
-                        <h2 className="text-lg md:text-xl font-semibold mb-4">Create Voucher</h2>
-
-                        <label className="block mb-2 text-sm md:text-base">Value (LYD):</label>
-                        <input
-                            type="number"
-                            min="1"
-                            value={selectedValue}
-                            onChange={(e) => setSelectedValue(Number(e.target.value))}
-                            className="w-full border p-2 rounded mb-4 text-sm md:text-base"
-                            placeholder="Enter voucher value"
-                        />
-
-                        <label className="block mb-2 text-sm md:text-base">Quantity:</label>
-                        <input
-                            type="number"
-                            min="1"
-                            value={quantity}
-                            onChange={(e) => setQuantity(Number(e.target.value))}
-                            className="w-full border p-2 rounded mb-4 text-sm md:text-base"
-                        />
-
-                        <div className="flex justify-between gap-2">
-                            <button onClick={togglePopup} className="bg-gray-400 text-white px-3 py-2 rounded text-sm md:text-base">
-                                Cancel
+                <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setShowPopup(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                            <h2 className="font-semibold text-gray-800">Create Voucher</h2>
+                            <button onClick={() => setShowPopup(false)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition">
+                                <X size={16} />
                             </button>
-                            <button
-                                onClick={() => handleCreateVoucher(false)}
-                                className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-sm md:text-base"
-                            >
-                                Create
-                            </button>
-                            <button
-                                onClick={() => handleCreateVoucher(true)}
-                                className="bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 text-sm md:text-base"
-                            >
-                                Create & Export
-                            </button>
+                        </div>
+                        <div className="px-6 py-5 space-y-4">
+                            <div>
+                                <label className="block text-sm text-gray-700 mb-1">Value (LYD)</label>
+                                <input type="number" min="1" value={selectedValue} onChange={e => setSelectedValue(Number(e.target.value))}
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                            </div>
+                            <div>
+                                <label className="block text-sm text-gray-700 mb-1">Quantity</label>
+                                <input type="number" min="1" value={quantity} onChange={e => setQuantity(Number(e.target.value))}
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                            </div>
+                        </div>
+                        <div className="px-6 pb-5 flex gap-3">
+                            <button onClick={() => setShowPopup(false)} className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-200 transition">Cancel</button>
+                            <button onClick={() => handleCreateVoucher(false)} className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 transition">Create</button>
+                            <button onClick={() => handleCreateVoucher(true)} className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-emerald-700 transition">Create & Export</button>
                         </div>
                     </div>
                 </div>

@@ -1,16 +1,28 @@
 "use client";
 import {
+  blockAllAvailableDates,
+  deleteExternalBooking,
   deletePropertyById,
   deletePropertyImage,
+  fetchExternalBookings,
   fetchPropertyById,
   toggleFeatured,
   updatePropertyDescription,
   updatePropertyDetails,
   updatePropertyTitle,
 } from "@/app/service";
-import { Pencil, Save, Star, Trash2, X } from "lucide-react";
+import { Ban, CalendarX, Pencil, Save, Star, Trash2, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
+interface DateEntry {
+  date: string;       // "dd/MM/yyyy"
+  isAvailable: boolean;
+  isBooked: boolean;
+  price: number;
+  bookingId?: string | null;
+  isCustomPrice?: boolean;
+}
 
 interface RentalUnit {
   bedroom?: number;
@@ -48,6 +60,7 @@ interface Property {
   squareFeet?: string;
   cancelationPolicy?: string;
   isFeatured?: boolean;
+  dates?: DateEntry[];
 }
 
 // ── Editable form state mirrors the fields the admin can change ──
@@ -208,11 +221,17 @@ export default function PropertyDetailsPage() {
   const [property, setProperty] = useState<Property | null>(null);
   const [togglingFeatured, setTogglingFeatured] = useState(false);
   const [form, setForm] = useState<DetailsForm | null>(null);
+  const [externalBookings, setExternalBookings] = useState<any[]>([]);
+  const [deletingBooking, setDeletingBooking] = useState<string | null>(null);
+  const [blockingDates, setBlockingDates] = useState(false);
 
   useEffect(() => {
     async function loadProperty() {
       if (!id) return;
-      const data = await fetchPropertyById(id);
+      const [data, extBookings] = await Promise.all([
+        fetchPropertyById(id),
+        fetchExternalBookings(id),
+      ]);
       if (data) {
         const p = data as Property;
         setProperty(p);
@@ -220,6 +239,7 @@ export default function PropertyDetailsPage() {
         setDescription(p.locationDescription || "");
         setForm(formFromProperty(p));
       }
+      setExternalBookings(extBookings);
       setLoading(false);
     }
     loadProperty();
@@ -325,6 +345,27 @@ export default function PropertyDetailsPage() {
     if (!confirm("Are you sure you want to delete this property?")) return;
     const success = await deletePropertyById(property.id);
     if (success) router.push("/dashboard/properties");
+  };
+
+  const handleDeleteExternalBooking = async (bookingId: string) => {
+    if (!confirm("Delete this external booking and free the dates?")) return;
+    setDeletingBooking(bookingId);
+    const success = await deleteExternalBooking(bookingId, property.id);
+    if (success) setExternalBookings((prev) => prev.filter((b) => b.id !== bookingId));
+    setDeletingBooking(null);
+  };
+
+  const handleBlockAllAvailableDates = async () => {
+    const dates = property.dates ?? [];
+    const availableCount = dates.filter((d) => d.isAvailable && !d.isBooked).length;
+    if (availableCount === 0) return;
+    if (!confirm(`Mark all ${availableCount} available date(s) as unavailable? Booked dates will not be affected.`)) return;
+    setBlockingDates(true);
+    const updated = await blockAllAvailableDates(property.id, dates);
+    if (updated) {
+      setProperty((prev) => ({ ...prev!, dates: updated as DateEntry[] }));
+    }
+    setBlockingDates(false);
   };
 
   const set = <K extends keyof DetailsForm>(key: K, value: DetailsForm[K]) =>
@@ -614,6 +655,149 @@ export default function PropertyDetailsPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Available Dates */}
+      {(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const parseDMY = (s: string) => {
+          const [d, m, y] = s.split("/").map(Number);
+          return new Date(y, m - 1, d);
+        };
+
+        const allDates = property.dates ?? [];
+        const availableDates = allDates
+          .filter((d) => d.isAvailable && !d.isBooked && parseDMY(d.date) >= today)
+          .sort((a, b) => parseDMY(a.date).getTime() - parseDMY(b.date).getTime());
+
+        const bookedCount = allDates.filter((d) => d.isBooked).length;
+
+        // Group available dates by month
+        const byMonth: Record<string, DateEntry[]> = {};
+        for (const d of availableDates) {
+          const dt = parseDMY(d.date);
+          const key = dt.toLocaleString("en", { month: "long", year: "numeric" });
+          if (!byMonth[key]) byMonth[key] = [];
+          byMonth[key].push(d);
+        }
+
+        return (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-gray-700">
+                  Available Dates
+                  <span className="ml-2 bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                    {availableDates.length} upcoming
+                  </span>
+                  {bookedCount > 0 && (
+                    <span className="ml-1.5 bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                      {bookedCount} booked
+                    </span>
+                  )}
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Future dates where the property is open for bookings.
+                </p>
+              </div>
+              <button
+                onClick={handleBlockAllAvailableDates}
+                disabled={blockingDates || availableDates.length === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {blockingDates ? (
+                  <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Ban size={15} />
+                )}
+                Block All Available
+              </button>
+            </div>
+
+            {availableDates.length === 0 ? (
+              <p className="text-sm text-gray-400 py-2">No upcoming available dates.</p>
+            ) : (
+              <div className="space-y-4">
+                {Object.entries(byMonth).map(([month, entries]) => (
+                  <div key={month}>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{month}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {entries.map((d) => (
+                        <span
+                          key={d.date}
+                          className="inline-flex flex-col items-center bg-green-50 border border-green-100 rounded-lg px-3 py-1.5 text-xs"
+                        >
+                          <span className="font-medium text-green-800">{d.date.slice(0, 5)}</span>
+                          {d.price > 0 && (
+                            <span className="text-green-600 mt-0.5">{d.price} LYD</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* External Bookings */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <CalendarX size={17} className="text-orange-500" />
+          <h2 className="text-base font-semibold text-gray-700">
+            External Bookings
+            {externalBookings.length > 0 && (
+              <span className="ml-2 bg-orange-100 text-orange-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                {externalBookings.length}
+              </span>
+            )}
+          </h2>
+        </div>
+
+        {externalBookings.length === 0 ? (
+          <p className="text-sm text-gray-400 py-2">No external bookings for this property.</p>
+        ) : (
+          <div className="space-y-3">
+            {externalBookings.map((b) => (
+              <div
+                key={b.id}
+                className="flex items-center justify-between gap-4 p-3 rounded-xl border border-gray-100 bg-gray-50"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">
+                    {b.fullName || "Guest"}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {b.checkIn} → {b.checkOut}
+                    {b.phoneNumber ? ` · ${b.phoneNumber}` : ""}
+                  </p>
+                  {b.totalPrice > 0 && (
+                    <p className="text-xs text-blue-600 font-semibold mt-0.5">
+                      {b.totalPrice.toLocaleString()} LYD
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleDeleteExternalBooking(b.id)}
+                  disabled={deletingBooking === b.id}
+                  title="Delete booking and free dates"
+                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 text-xs font-medium transition disabled:opacity-50"
+                >
+                  {deletingBooking === b.id ? (
+                    <div className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Trash2 size={13} />
+                  )}
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Delete property */}

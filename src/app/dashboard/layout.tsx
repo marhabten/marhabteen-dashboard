@@ -37,9 +37,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (loading) return <p className="text-center mt-10">Checking permissions...</p>;
 
     return (
-        <div className="flex h-screen">
+        <div className="flex h-screen overflow-hidden">
             <SideBar />
-            <main className="flex-1 p-6 overflow-y-auto bg-gray-50 relative">{children}</main>
+            <main className="flex-1 overflow-y-auto bg-gray-50 relative">{children}</main>
         </div>
     );
 }

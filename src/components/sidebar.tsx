@@ -1,7 +1,7 @@
 "use client";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
-import { CalendarDays, Home, LayoutDashboard, LogOut, Menu, MessageSquare, Ticket, Users, X } from "lucide-react";
+import { CalendarDays, Home, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquare, Ticket, Users, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -13,25 +13,25 @@ const SideBar = () => {
 
     const handleLogout = async () => {
         await signOut(auth);
-        router.push("/login"); // Redirect to login after logout
+        router.push("/login");
     };
 
     const toggleSidebar = () => setIsOpen(!isOpen);
 
-    // Define menu items
     const menuItems = [
-        { name: "Dashboard", path: "/dashboard", icon: <LayoutDashboard size={24} /> },
-        { name: "Properties", path: "/dashboard/properties", icon: <Home size={24} /> },
-        { name: "Users", path: "/dashboard/users", icon: <Users size={24} /> },
-        { name: "Bookings", path: "/dashboard/bookings", icon: <CalendarDays size={24} /> },
-        { name: "Vouchers", path: "/dashboard/vouchers", icon: <Ticket size={24} /> },
+        { name: "Dashboard",     path: "/dashboard",               icon: <LayoutDashboard size={24} /> },
+        { name: "Properties",    path: "/dashboard/properties",    icon: <Home size={24} /> },
+        { name: "Users",         path: "/dashboard/users",         icon: <Users size={24} /> },
+        { name: "Bookings",      path: "/dashboard/bookings",      icon: <CalendarDays size={24} /> },
+        { name: "Vouchers",      path: "/dashboard/vouchers",      icon: <Ticket size={24} /> },
         { name: "Conversations", path: "/dashboard/conversations", icon: <MessageSquare size={24} /> },
+        { name: "Communication", path: "/dashboard/communication", icon: <Megaphone size={24} /> },
     ];
 
     return (
         <>
             {/* Mobile Menu Button */}
-            <button onClick={toggleSidebar} className="lg:hidden p-3 fixed top-4 left-4 bg-gray-200 rounded-md z-50">
+            <button onClick={toggleSidebar} className="lg:hidden p-3 fixed top-4 left-4 bg-gray-200 rounded-md">
                 <Menu size={24} />
             </button>
 
@@ -58,7 +58,7 @@ const SideBar = () => {
                             <li key={item.name}>
                                 <Link
                                     href={item.path}
-                                    onClick={toggleSidebar} // Close sidebar when clicking a link
+                                    onClick={toggleSidebar}
                                     className={`flex items-center gap-3 px-4 py-3 rounded-lg transition ${
                                         currentPath === item.path
                                             ? "bg-blue-600 text-white"
@@ -71,7 +71,6 @@ const SideBar = () => {
                             </li>
                         ))}
                     </ul>
-
                 </div>
 
                 {/* Logout Button */}
@@ -81,7 +80,7 @@ const SideBar = () => {
                 >
                     <LogOut size={24} />
                     <span>Logout</span>
-                </button> 
+                </button>
             </div>
         </>
     );
